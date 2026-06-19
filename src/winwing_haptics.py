@@ -69,6 +69,7 @@ from winwinghaptics.sources import WarThunder  # noqa: E402
 # ----------------------------------------------------------------------------------------
 
 from winwinghaptics.effects import Effects  # noqa: E402
+from winwinghaptics import config  # noqa: E402
 
 
 # ----------------------------------------------------------------------------------------
@@ -137,36 +138,27 @@ def run_gui():
     }
 
     # ---- config persistence (next to the exe/script) ----
-    base_dir = os.path.dirname(os.path.abspath(
-        sys.executable if getattr(sys, "frozen", False) else __file__))
-    CONFIG = os.path.join(base_dir, "winwing_haptics.json")
-    HUD_CALIB = os.path.join(base_dir, "hud_calib.json")
+    base_dir = config.app_base_dir(__file__)
+    CONFIG = os.path.join(base_dir, config.CONFIG_NAME)
+    HUD_CALIB = os.path.join(base_dir, config.HUD_CALIB_NAME)
 
     def load_cfg():
-        try:
-            with open(CONFIG, encoding="utf-8") as fh:
-                cfg = json.load(fh)
-            if cfg.get("hud_region"):
-                state["hud_region"] = tuple(cfg["hud_region"])
-            state["hud_on"] = bool(cfg.get("hud_on", False))
-            state["callsign"] = cfg.get("callsign", "")
-            return cfg.get("enables") or {}
-        except Exception:
-            return {}
+        cfg = config.load(CONFIG)
+        if cfg.get("hud_region"):
+            state["hud_region"] = tuple(cfg["hud_region"])
+        state["hud_on"] = bool(cfg.get("hud_on", False))
+        state["callsign"] = cfg.get("callsign", "")
+        return cfg.get("enables") or {}
 
     def save_cfg():
-        try:
-            data = {
-                "enables": {"gun": en_gun.get(), "kill": en_kill.get(),
-                            "hit": en_hit.get(), "death": en_death.get()},
-                "hud_on": state["hud_on"],
-                "hud_region": list(state["hud_region"]),
-                "callsign": state.get("callsign", ""),
-            }
-            with open(CONFIG, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-        except Exception:
-            pass
+        data = {
+            "enables": {"gun": en_gun.get(), "kill": en_kill.get(),
+                        "hit": en_hit.get(), "death": en_death.get()},
+            "hud_on": state["hud_on"],
+            "hud_region": list(state["hud_region"]),
+            "callsign": state.get("callsign", ""),
+        }
+        config.save(CONFIG, data)
 
     def card(parent, pad=10):
         c = tk.Frame(parent, bg=PANEL, highlightthickness=1, highlightbackground="#262d36")
