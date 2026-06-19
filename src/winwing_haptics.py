@@ -768,9 +768,12 @@ def run_gui():
                 _rec_write(rec_info)
                 if now >= state["hud_rec_until"]:
                     d = state["hud_rec_dir"]
-                    state["hud_rec_dir"] = None
+                    # write the footer BEFORE clearing hud_rec_dir -- _rec_write reads
+                    # state["hud_rec_dir"] and early-returns when it's None, so nulling it
+                    # first silently dropped every recording's footer.
                     _rec_write({"type": "footer", "frames": state["hud_rec_n"],
                                 "t": round(now, 3)})
+                    state["hud_rec_dir"] = None
                     log(f"Recording done: {state['hud_rec_n']} frames → "
                         f"{os.path.basename(d)}", "fx")
                     try:
