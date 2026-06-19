@@ -18,7 +18,7 @@ Reports per recording:
 import os, json, statistics as S
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-import hud_detect as H
+import winwinghaptics.detection.hud_detect as H
 
 RECS = [
     r"hud_rec_20260618_101336\hud_rec_20260618_101336",

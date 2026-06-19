@@ -35,18 +35,20 @@ The app fuses two signal sources and renders effects on one serialized motor thr
 ## Project layout
 
 ```
+run.py                 Thin launcher (python run.py [--selftest|--hudtest])
 src/
   winwing_haptics.py   Main Tkinter app: workers, effect engine, HID I/O, WT telemetry
-  hud_detect.py        HUD detector + TemporalTracker (calibration, read_counts, fire logic)
-tools/
-  hud_eval.py          Offline calibration + per-frame accuracy harness (datasets/)
-  event_harness.py     Event-level hit/miss/false-fire scoring on a recording
-  all_frames_audit.py  Faithful detector A/B over every frame (needs sidecar calib.json)
-  miss_audit.py        Missed / late-detection audit on real saved reads
-  live_vs_current.py   Diff current tracker vs what fired live in-game
+  winwinghaptics/
+    detection/
+      hud_detect.py    HUD detector + TemporalTracker (calibration, read_counts, fire logic)
+tools/                 Offline analysis + the A/B test platform drivers (see tests/README.md)
+tests/                 Regression suite: detector / tracker / calibration A/B (pytest)
 recordings/            (gitignored) Drop Record-30s captures here for the tools
 datasets/              (gitignored) Static frame sets + ground_truth.json for hud_eval
 ```
+
+> The app is being decomposed from the flat `winwing_haptics.py` into the `winwinghaptics`
+> package, one phase at a time; each phase stays green on the `tests/` suite.
 
 ---
 
@@ -61,7 +63,7 @@ python -m pip install -r requirements.txt
 Run from source:
 
 ```powershell
-python src\winwing_haptics.py
+python run.py
 ```
 
 In the app: connect the stick, enable HUD auto-detect (it self-calibrates), and the status
@@ -75,11 +77,10 @@ panel shows the live read. Use **Record 30s** to capture a clip (frames + teleme
 PyInstaller `--onedir` (WDAC environments block `--onefile`):
 
 ```powershell
-cd src
 python -m PyInstaller --onedir --noconsole --name WinwingHaptics ^
-  --distpath ..\dist_final --workpath ..\build --specpath ..\build ^
-  --collect-all winsdk --hidden-import hud_detect --collect-submodules numpy ^
-  winwing_haptics.py
+  --distpath dist_final --workpath build --specpath build ^
+  --collect-all winsdk --collect-submodules winwinghaptics --collect-submodules numpy ^
+  run.py
 ```
 
 Smoke-test the build headlessly:

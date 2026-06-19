@@ -14,7 +14,7 @@ from that shared offset.
 import sys, glob, os, struct, json, time, re, asyncio
 import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-import hud_detect as H
+import winwinghaptics.detection.hud_detect as H
 
 LABELS = ["RKT", "BMB", "AAM", "FLR", "CHFF", "CNN"]
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "datasets")

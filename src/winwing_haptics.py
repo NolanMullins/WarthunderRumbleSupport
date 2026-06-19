@@ -40,7 +40,7 @@ import http.client
 # Optional HUD auto-detect (numpy + winsdk OCR). Imported lazily/guarded so the app
 # still runs if these aren't present.
 try:
-    import hud_detect as hud_detect
+    import winwinghaptics.detection.hud_detect as hud_detect
     _HUD_AVAILABLE = True
 except Exception:
     hud_detect = None

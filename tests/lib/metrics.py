@@ -14,7 +14,7 @@ import sys
 # make src/ importable (hud_detect)
 sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src")))
-import hud_detect as H  # noqa: E402
+import winwinghaptics.detection.hud_detect as H  # noqa: E402
 
 ASSOC = 2   # onset-association window (frames). ~20 Hz capture => +/-2 frames ~= +/-0.1 s.
 

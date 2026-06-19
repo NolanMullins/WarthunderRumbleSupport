@@ -20,7 +20,7 @@ import sys, glob, os, struct, zlib
 import numpy as np
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-import hud_detect as H
+import winwinghaptics.detection.hud_detect as H
 
 REC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "recordings",
                    "hud_rec_20260618_101336", "hud_rec_20260618_101336")

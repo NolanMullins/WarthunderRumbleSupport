@@ -17,7 +17,7 @@ import sys, glob, os, json, statistics as S
 import numpy as np
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-import hud_detect as H
+import winwinghaptics.detection.hud_detect as H
 import event_harness as eh
 
 # Recordings live under <repo>/recordings/<clip>/<clip>/ (gitignored). Drop your own

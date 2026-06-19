@@ -22,10 +22,11 @@ import hashlib
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, "..", "..", "src")))
-import hud_detect as H  # noqa: E402
+import winwinghaptics.detection.hud_detect as H  # noqa: E402
 
 CACHE_DIR = os.path.normpath(os.path.join(_HERE, "..", ".cache"))
-_DETECT_SRC = os.path.normpath(os.path.join(_HERE, "..", "..", "src", "hud_detect.py"))
+_DETECT_SRC = os.path.normpath(os.path.join(
+    _HERE, "..", "..", "src", "winwinghaptics", "detection", "hud_detect.py"))
 
 
 def detector_hash():

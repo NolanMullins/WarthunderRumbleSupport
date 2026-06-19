@@ -20,7 +20,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, "..", "..", "src")))
-import hud_detect as H  # noqa: E402
+import winwinghaptics.detection.hud_detect as H  # noqa: E402
 
 from . import detect as D
 
