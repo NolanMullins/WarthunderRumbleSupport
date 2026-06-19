@@ -69,6 +69,9 @@ from winwinghaptics.sources import WarThunder  # noqa: E402
 # ----------------------------------------------------------------------------------------
 
 from winwinghaptics.effects import Effects  # noqa: E402
+from winwinghaptics.effects import dispatch  # noqa: E402
+from winwinghaptics.sources import killfeed  # noqa: E402
+from winwinghaptics.events import EventType  # noqa: E402
 from winwinghaptics import config  # noqa: E402
 
 
@@ -610,59 +613,19 @@ def run_gui():
         # whether matching worked -- this is the fastest way to diagnose "callsign effects
         # don't fire" (wrong callsign, squadron tag, unexpected verb, localisation, etc.).
         log(f"WT: {msg}", "wt")
-        cs_raw = (state.get("callsign") or "").strip().lower()
-        if not cs_raw:
-            return
-        # Robust name matching: pull alphanumeric tokens (len>=3) from the entered callsign
-        # so a squadron prefix on either side (e.g. "=GRIND= DEERSLUG") still matches when
-        # the user typed just "DEERSLUG".
-        import re as _re
-        cs_tokens = [t for t in _re.findall(r"[a-z0-9]+", cs_raw) if len(t) >= 3]
-        if not cs_tokens:
-            cs_tokens = [cs_raw]
-
-        def is_me(segment):
-            seg = segment.lower()
-            return any(t in seg for t in cs_tokens)
-
-        low = msg.lower()
-        # WT kill-feed verbs vary by mode/locale. Cover the common English ones; the verb
-        # splits the line into attacker (left) and victim (right).
-        kill_verbs = (" destroyed ", " shot down ", " has shot down ", " wrecked ",
-                      " set afire ", " severely damaged ", " has destroyed ")
-        crash_terms = ("has crashed", "has been wrecked", "wasted", "crashed")
-
-        for verb in kill_verbs:
-            if verb in low:
-                attacker, victim = low.split(verb, 1)
-                if is_me(attacker):
-                    if state["en_kill"]:
-                        effects.kill()
-                    log(f"KILL  {msg}", "kill")
-                elif is_me(victim):
-                    if state["en_death"]:
-                        effects.death()
-                    log(f"DEATH  {msg}", "death")
-                return
-        # self-inflicted / crash with no attacker verb
-        if any(t in low for t in crash_terms) and is_me(low):
+        outcome = killfeed.classify(msg, state.get("callsign"))
+        if outcome == EventType.KILL:
+            if state["en_kill"]:
+                effects.kill()
+            log(f"KILL  {msg}", "kill")
+        elif outcome == EventType.DEATH:
             if state["en_death"]:
                 effects.death()
             log(f"DEATH  {msg}", "death")
-            return
-        # Non-fatal hit: a milder damage verb where YOU are the victim. Runs only after the
-        # kill/death checks (severe "destroyed/shot down/severely damaged" already returned),
-        # so this fires the lighter "took a hit" bump rather than a death. Verbs vary by mode/
-        # locale; the raw WT: line above lets the user confirm/extend these.
-        hit_verbs = (" hit ", " damaged ", " has damaged ", " set on fire ")
-        for verb in hit_verbs:
-            if verb in low:
-                attacker, victim = low.split(verb, 1)
-                if is_me(victim):
-                    if state["en_hit"]:
-                        effects.hit()
-                    log(f"HIT  {msg}", "fx")
-                return
+        elif outcome == EventType.HIT:
+            if state["en_hit"]:
+                effects.hit()
+            log(f"HIT  {msg}", "fx")
 
     # --- worker: HUD auto-detect (screen OCR of weapon counters) ---
     def hud_worker():
@@ -768,28 +731,16 @@ def run_gui():
                             state["hud_auto_next"] = 0.0
                             continue
                         empty_streak = 0     # no HUD visible (menu/clear) -> not a fault
-            dispatched = []
-            for wp, effect, kind, delta, old, new in events:
-                if kind == "rapid":
-                    # gun: handled below via a sustained firing state (not per-event), so the
-                    # rumble is one continuous buzz across the burst instead of pulsing.
-                    dispatched.append({"weapon": wp, "effect": "gun_active", "kind": kind,
-                                       "old": old, "new": new, "delta": delta})
-                elif kind == "counter":
-                    # flares/chaff: subtle knock, throttled so a dump = a couple of knocks
-                    if now - last_counter_knock >= 0.30:
-                        effects.flare()
-                        last_counter_knock = now
-                        dispatched.append({"weapon": wp, "effect": "flare", "kind": kind,
-                                           "old": old, "new": new, "delta": delta})
-                    else:
-                        dispatched.append({"weapon": wp, "effect": "flare_throttled",
-                                           "kind": kind, "old": old, "new": new, "delta": delta})
-                else:
-                    effects.fire_effect(effect)
-                    dispatched.append({"weapon": wp, "effect": effect, "kind": kind,
-                                       "old": old, "new": new, "delta": delta})
-                log(f"HUD {wp} {old}->{new}  →  {effect}", "fx")
+            dispatch_plan = dispatch.plan(events, now, last_counter_knock)
+            for action in dispatch_plan.actions:
+                if action[0] == "flare":
+                    effects.flare()
+                else:                              # ("fire_effect", effect_name)
+                    effects.fire_effect(action[1])
+            for line in dispatch_plan.logs:
+                log(line, "fx")
+            last_counter_knock = dispatch_plan.last_counter_knock
+            dispatched = dispatch_plan.dispatched
             # Sustain ONE continuous gun rumble while any rapid weapon is actively firing
             # (count still dropping). Polling at ~17-20 Hz, we extend the rumble a little past
             # the next poll so it never gaps between confirmed ticks -> steady, not pulsing.
