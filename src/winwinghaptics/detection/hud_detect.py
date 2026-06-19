@@ -1196,10 +1196,22 @@ def calibrate_from_grays(grays):
     c.match_floor = MATCH_FLOOR; c.trim_ink = TRIM_INK
     c.label_x0 = max(0, int(np.median(label_x0s))); c.label_w = LABEL_W
     c.count_x = count_x
-    # Keep a weapon row only if its label was OCR-detected in at least 2 frames -- a single
-    # sighting over cloud is too often a misplacement. (Depleted/dimmed rows like FLR=0 may
-    # drop out; that is fine -- an empty weapon cannot fire.)
-    rows2 = {k: v for k, v in rows.items() if len(v) >= 2}
+    # Keep a weapon row if its label was OCR-detected in >=2 frames. A single sighting over
+    # cloud is usually a misplacement -- BUT a genuinely sparse/single-digit row (e.g. BMB=1)
+    # may only resolve once, and hard-dropping it means that weapon can NEVER fire. So also
+    # keep a one-sighting row when it is CORROBORATED: it had a number paired to it that sits
+    # in the real count column (within 2*pitch of count_x). That rejects random stray labels
+    # while preserving weak real rows. (Depleted/dimmed rows like FLR=0 may still drop; an
+    # empty weapon cannot fire, so that is fine.)
+    def _row_ok(lab, ys):
+        if len(ys) >= 2:
+            return True
+        xs = count_xs.get(lab)
+        if not xs:
+            return False
+        return abs(float(np.median(xs)) - count_x) <= 2 * pitch
+
+    rows2 = {k: v for k, v in rows.items() if _row_ok(k, v)}
     if not rows2:
         rows2 = {k: v for k, v in rows.items()}   # fallback: keep singletons if that's all
     c.rows = {k: int(np.median(v)) for k, v in rows2.items()}
