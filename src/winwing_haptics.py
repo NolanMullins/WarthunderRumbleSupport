@@ -34,7 +34,6 @@ import json
 import queue
 import threading
 import ctypes
-import http.client
 
 # Optional HUD auto-detect (numpy + winsdk OCR). Imported lazily/guarded so the app
 # still runs if these aren't present.
@@ -54,37 +53,10 @@ from winwinghaptics.hardware import Stick  # noqa: E402
 
 
 # ----------------------------------------------------------------------------------------
-# War Thunder telemetry poller (stdlib http.client)
+# War Thunder telemetry poller — extracted to winwinghaptics.sources.
 # ----------------------------------------------------------------------------------------
 
-class WarThunder:
-    def __init__(self):
-        self.conn = None
-
-    def _get(self, path):
-        try:
-            if self.conn is None:
-                self.conn = http.client.HTTPConnection("localhost", 8111, timeout=0.5)
-            self.conn.request("GET", path, headers={"Connection": "keep-alive"})
-            r = self.conn.getresponse()
-            body = r.read()
-            if r.status != 200:
-                return None
-            return json.loads(body.decode("utf-8", "replace"))
-        except Exception:
-            try:
-                if self.conn:
-                    self.conn.close()
-            except Exception:
-                pass
-            self.conn = None
-            return None
-
-    def indicators(self):
-        return self._get("/indicators")
-
-    def hudmsg(self, last_evt, last_dmg):
-        return self._get(f"/hudmsg?lastEvt={last_evt}&lastDmg={last_dmg}")
+from winwinghaptics.sources import WarThunder  # noqa: E402
 
 
 # ----------------------------------------------------------------------------------------
