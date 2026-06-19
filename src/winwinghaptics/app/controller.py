@@ -74,6 +74,11 @@ class AppController:
         }
 
         self._log_q = queue.Queue()
+        # Serialises calibration: the manual 'Re-learn' button and the HUD worker both call
+        # calibrate_core() on different threads. A plain bool guard is check-then-set (a TOCTOU
+        # race) so both callers could enter at once. This lock makes entry atomic; the loser
+        # simply skips (non-blocking acquire) instead of running a second overlapping calibration.
+        self._calib_lock = threading.Lock()
         self.effects.log = lambda m: self.log(m, "fx")
 
     # ---- thread-safe logging (UI drains the queue) ----
@@ -135,10 +140,14 @@ class AppController:
 
     def calibrate_core(self, manual):
         """Run the one-time OCR calibration (blocking ~4s). Shared by the silent
-        auto-calibrator and the manual 'Re-learn' button. Guarded so the two never
+        auto-calibrator and the manual 'Re-learn' button. Guarded by a lock so the two never
         overlap. On success the calibration is saved and fast detection is live."""
         det = self.get_det()
-        if det is None or self.state["hud_calibrating"]:
+        if det is None:
+            return False
+        # Non-blocking acquire: if a calibration is already running on another thread, skip
+        # rather than queue up a redundant second pass.
+        if not self._calib_lock.acquire(blocking=False):
             return False
         self.state["hud_calibrating"] = True
         try:
@@ -157,6 +166,7 @@ class AppController:
             return ok
         finally:
             self.state["hud_calibrating"] = False
+            self._calib_lock.release()
 
     def calibrate_detector(self):
         """Manual 'Re-learn HUD' button -> run calibration in a worker thread."""
