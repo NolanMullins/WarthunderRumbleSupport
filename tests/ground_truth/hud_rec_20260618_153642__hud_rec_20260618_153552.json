@@ -1,0 +1,52 @@
+﻿{
+  "_comment": "CANDIDATE GT auto-derived from saved reads of hud_rec_20260618_153642/hud_rec_20260618_153552; HAND-VERIFY. Return-to-same misread excursions were auto-collapsed; real monotonic fires preserved. Verify fire counts/values before setting _unverified=false.",
+  "_unverified": true,
+  "AAM": [
+    [
+      0,
+      587,
+      4
+    ]
+  ],
+  "CNN": [
+    [
+      0,
+      103,
+      120
+    ],
+    [
+      104,
+      124,
+      115
+    ],
+    [
+      125,
+      134,
+      116
+    ],
+    [
+      135,
+      185,
+      111
+    ],
+    [
+      186,
+      587,
+      89
+    ]
+  ],
+  "FLR": [
+    [
+      0,
+      587,
+      9
+    ]
+  ],
+  "RKT": [
+    [
+      11,
+      587,
+      48
+    ]
+  ]
+}

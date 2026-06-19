@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller build output
+build/
+dist/
+dist_final/
+*.spec
+
+# Packaged app
+*.zip
+
+# Local data (large) — drop your own captures here, never committed.
+# Ignore the CONTENTS (not the dirs) so each folder's .gitignore + README stay tracked.
+recordings/*
+datasets/*
+*.png
+*.bmp
+*.pcapng
+*.csv
+
+# App runtime artifacts
+crash_log.txt
+hudtest_result.txt
+boot_out.txt
+winwing_haptics.json
+*.calib.json
+calib.json
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

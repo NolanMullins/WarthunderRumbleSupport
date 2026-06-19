@@ -1,0 +1,8 @@
+{
+  "_comment": "Hand-verified dense GT. Stable segments [start,end,value] (inclusive); gaps are transition zones. Ported from sim_test/dense_gt.json.",
+  "_unverified": false,
+  "AAM":  [[0, 358, 3]],
+  "FLR":  [[0, 358, 0]],
+  "CNN":  [[0, 28, 172], [46, 76, 144], [120, 286, 78], [315, 358, 48]],
+  "CHFF": [[0, 60, 132], [295, 358, 88]]
+}

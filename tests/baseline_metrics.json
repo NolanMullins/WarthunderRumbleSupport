@@ -1,0 +1,31 @@
+{
+  "aggregate": {
+    "event_failed_frames": 23,
+    "event_total_frames": 848,
+    "event_false_fires": 2,
+    "event_missed_fires": 22,
+    "event_failure_rate": 0.027122641509433963,
+    "misread_faithful_clips": 0,
+    "misread_cells": 0,
+    "misread_scored_cells": 0,
+    "misread_rate": null
+  },
+  "per_recording": {
+    "hud_rec_20260618_111503/hud_rec_20260618_111503": {
+      "event_failure_rate": 0.002785515320334262,
+      "event_failed_frames": 1,
+      "event_false_fires": 0,
+      "event_missed_fires": 1,
+      "n_frames": 359,
+      "misread_rate": null
+    },
+    "hud_rec_20260618_140000/hud_rec_20260618_140000": {
+      "event_failure_rate": 0.044989775051124746,
+      "event_failed_frames": 22,
+      "event_false_fires": 2,
+      "event_missed_fires": 21,
+      "n_frames": 489,
+      "misread_rate": null
+    }
+  }
+}

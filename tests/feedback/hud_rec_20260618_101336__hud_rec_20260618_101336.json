@@ -1,0 +1,789 @@
+{
+  "clip": "hud_rec_20260618_101336/hud_rec_20260618_101336",
+  "frames": {
+    "0": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "31": {
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "32": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "FLR": {
+        "status": "value",
+        "value": 138
+      }
+    },
+    "33": {
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "34": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "35": {
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "36": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "37": {
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "value",
+        "value": 268
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "38": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "value",
+        "value": 264
+      }
+    },
+    "40": {
+      "FLR": {
+        "status": "value",
+        "value": 138
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      }
+    },
+    "39": {
+      "CNN": {
+        "status": "value",
+        "value": 262
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "41": {
+      "FLR": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "correct"
+      }
+    },
+    "42": {
+      "CNN": {
+        "status": "value",
+        "value": 252
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "43": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "44": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "45": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "46": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "47": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "48": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "49": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "50": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "51": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "52": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "53": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "54": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "55": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "56": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "57": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "58": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "59": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "60": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "61": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "62": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "63": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "64": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "65": {
+      "CHFF": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      }
+    },
+    "66": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "67": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "137": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "138": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "160": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "165": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      }
+    },
+    "166": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      }
+    },
+    "167": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "168": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "169": {
+      "CHFF": {
+        "status": "value",
+        "value": 279
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "correct"
+      }
+    },
+    "170": {
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "AAM": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "171": {
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "172": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      }
+    },
+    "224": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "225": {
+      "CHFF": {
+        "status": "correct"
+      },
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "226": {
+      "AAM": {
+        "status": "value",
+        "value": 5
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "227": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "313": {
+      "AAM": {
+        "status": "value",
+        "value": 4
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "314": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "315": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "value",
+        "value": 270
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    },
+    "316": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CHFF": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "value",
+        "value": 216
+      },
+      "FLR": {
+        "status": "correct"
+      }
+    }
+  }
+}

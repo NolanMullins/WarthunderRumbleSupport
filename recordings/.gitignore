@@ -1,0 +1,10 @@
+# Test-data folder — local only. Recordings are large binary captures (frames + telemetry)
+# and must NEVER be committed. This file ignores ALL contents of recordings/ except itself
+# and the README, so the folder's purpose is documented in the repo while the data stays
+# local.
+
+# ignore everything in this directory...
+*
+# ...but keep these tracked so the folder + docs exist in the repo
+!.gitignore
+!README.md
