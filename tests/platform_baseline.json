@@ -1,5 +1,5 @@
 {
-  "detector_hash": "350db2aa1f01",
+  "detector_hash": "a0caf96d073b",
   "aggregate": {
     "present_cells": 8156,
     "missed_row": 640,
@@ -9,18 +9,18 @@
     "misread": 310,
     "misread_rate": 0.041245343267695585,
     "events": 81,
-    "hits": 53,
-    "misses": 28,
-    "false_fires": 22,
-    "event_miss_rate": 0.345679012345679,
+    "hits": 55,
+    "misses": 26,
+    "false_fires": 20,
+    "event_miss_rate": 0.32098765432098764,
     "calib_missing_rows": []
   },
   "per_recording": {
     "hud_rec_20260618_101336/hud_rec_20260618_101336": {
       "missed_row_rate": 0.014583333333333334,
       "misread_rate": 0.059901338971106416,
-      "event_miss_rate": 0.25,
-      "event_false_fires": 8
+      "event_miss_rate": 0.2,
+      "event_false_fires": 7
     },
     "hud_rec_20260618_111503/hud_rec_20260618_111503": {
       "missed_row_rate": 0.08565459610027855,
@@ -31,8 +31,8 @@
     "hud_rec_20260618_140000/hud_rec_20260618_140000": {
       "missed_row_rate": 0.08572404371584699,
       "misread_rate": 0.035113933507657825,
-      "event_miss_rate": 0.5714285714285714,
-      "event_false_fires": 8
+      "event_miss_rate": 0.5357142857142857,
+      "event_false_fires": 7
     },
     "hud_rec_20260618_153642/hud_rec_20260618_153552": {
       "missed_row_rate": 0.10416666666666667,

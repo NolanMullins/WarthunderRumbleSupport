@@ -1009,6 +1009,25 @@ class TemporalTracker:
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
+            # DISCRETE fast-onset: discrete ordnance (missile/rocket/bomb) fires ONE shot per
+            # decrement -- there is no continuous burst to flicker, so a real launch shows as a
+            # clean step DOWN that then holds. The moment the last TWO raw reads AGREE on a new
+            # lower plausible value (a == b < cur, _is_fire), fire immediately instead of
+            # waiting ~4 frames for the median to catch up. This removes the felt input lag on
+            # rockets/missiles that the median path otherwise scored as a late onset. The
+            # two-frame agreement rejects a 1-frame misread; _is_fire rejects truncation
+            # clusters; firing sets the baseline so the median path won't re-fire the same step.
+            if cls == "discrete":
+                vv = [x for x in self.raw[wp] if x is not None]
+                if len(vv) >= 2:
+                    a, b = vv[-2], vv[-1]
+                    if a == b and b < cur and self._is_fire(cls, cur, b):
+                        events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
+                                       cur - b, cur, b))
+                        self.conf[wp] = b
+                        self._cand.pop(wp, None)
+                        self._last_drop[wp] = self._t
+                        continue
             if level == cur:
                 self._cand.pop(wp, None)           # back on baseline -> clear any candidate
                 continue
