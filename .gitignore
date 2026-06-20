@@ -39,3 +39,5 @@ Thumbs.db
 tools/_crops/
 tests/.cache/
 tests/pinned_calib/
+tests/digit_dataset/
+tests/digit_model.npz

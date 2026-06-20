@@ -27,11 +27,23 @@ import winwinghaptics.detection.hud_detect as H  # noqa: E402
 CACHE_DIR = os.path.normpath(os.path.join(_HERE, "..", ".cache"))
 _DETECT_SRC = os.path.normpath(os.path.join(
     _HERE, "..", "..", "src", "winwinghaptics", "detection", "hud_detect.py"))
+_MODEL_SRC = os.path.normpath(os.path.join(
+    _HERE, "..", "..", "src", "winwinghaptics", "detection", "digit_model.npz"))
 
 
 def detector_hash():
+    """SHA over the detector source AND the shipped digit model, so retraining the model
+    (which changes reads without touching hud_detect.py) also invalidates the re-detection
+    cache -- stale runs can never silently pass."""
+    h = hashlib.sha1()
     with open(_DETECT_SRC, "rb") as f:
-        return hashlib.sha1(f.read()).hexdigest()[:12]
+        h.update(f.read())
+    try:
+        with open(_MODEL_SRC, "rb") as f:
+            h.update(f.read())
+    except OSError:
+        pass
+    return h.hexdigest()[:12]
 
 
 def _cache_path(clip, source):

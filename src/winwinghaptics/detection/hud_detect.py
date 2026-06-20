@@ -28,6 +28,65 @@ Calibration (one-time) uses Windows OCR to harvest the user's own monospace digi
 templates and the column geometry (see hud_eval.py).
 """
 import numpy as np
+import os as _os
+
+
+# ----------------------------- learned digit classifier -----------------------------
+# A tiny MLP (600->64->10) trained OFFLINE (tools/train_digit_mlp.py) on human-verified
+# digit crops + augmented calibration templates, deployed here as a PURE-NUMPY forward pass
+# so the shipped app keeps numpy as its only runtime dependency. It replaces single-exemplar
+# NCC for digit IDENTITY: NCC ties on blur (digit '6' read correctly only 35% of the time,
+# usually as 0/8); this classifier learns the real per-digit distribution (6 -> ~98%). The
+# input is the SAME zero-mean unit-norm gw*gh patch NCC consumes, so it is a drop-in.
+class DigitModel:
+    def __init__(self, W1, b1, W2, b2, classes, gw, gh):
+        self.W1 = W1; self.b1 = b1; self.W2 = W2; self.b2 = b2
+        self.classes = classes; self.gw = int(gw); self.gh = int(gh)
+
+    @classmethod
+    def load(cls, path):
+        try:
+            d = np.load(path)
+            return cls(d["W1"], d["b1"], d["W2"], d["b2"], d["classes"],
+                       int(d["gw"]), int(d["gh"]))
+        except Exception:
+            return None
+
+    def predict(self, patch):
+        """patch: zero-mean unit-norm (gh,gw) float array (a _box_patch output).
+        Returns (char, prob_top, prob_margin) or (None,-1,-1) on shape mismatch."""
+        v = patch.ravel()
+        if v.shape[0] != self.W1.shape[0]:
+            return None, -1.0, -1.0
+        z1 = v @ self.W1 + self.b1
+        np.maximum(z1, 0, out=z1)                   # relu, in place
+        z2 = z1 @ self.W2 + self.b2
+        z2 -= z2.max()
+        e = np.exp(z2); p = e / e.sum()
+        i = int(p.argmax())
+        top = float(p[i])
+        p[i] = -1.0
+        second = float(p.max())
+        return str(int(self.classes[i])), top, top - second
+
+
+_MODEL_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "digit_model.npz")
+_DIGIT_MODEL = None
+_DIGIT_MODEL_TRIED = False
+# Ambiguity gate for the learned classifier: reject a digit whose top-vs-second softmax
+# probability gap is below this (the value is only right if every digit is -- a near-tie
+# means we don't actually know it, so we no-read rather than emit a coin-flip).
+MODEL_MARGIN_FLOOR = 0.20
+
+
+def _digit_model():
+    """Lazy-load the shipped digit classifier once (None if absent -> NCC fallback)."""
+    global _DIGIT_MODEL, _DIGIT_MODEL_TRIED
+    if not _DIGIT_MODEL_TRIED:
+        _DIGIT_MODEL_TRIED = True
+        if _os.path.exists(_MODEL_PATH):
+            _DIGIT_MODEL = DigitModel.load(_MODEL_PATH)
+    return _DIGIT_MODEL
 
 
 # ----------------------------- text features -----------------------------
@@ -443,7 +502,14 @@ def _box_patch(band, x0, x1, calib):
 
 
 def _best_digit(patch, calib):
-    """Best digit char and score (margin = best - second-best digit)."""
+    """Best digit char and score. NCC is always computed (it provides the scale-stable
+    'digit-likeness' score the suffix/accept gates are tuned against, and is the fallback).
+    When the learned classifier is present it OVERRIDES the identity (NCC ties on blur, e.g.
+    6->0/8; the MLP learns the real distribution) and supplies a confidence margin; the
+    returned score stays NCC-scale so downstream thresholds are unchanged.
+
+    Returns (char, score_ncc, margin) where margin is MLP-prob-margin when the model is
+    active (gate via MODEL_MARGIN_FLOOR) else NCC best-minus-second (NCC_MARGIN_FLOOR)."""
     s1, c1, s2 = -1.0, None, -1.0
     pr = patch.ravel()
     for ch, mat in calib._digit_mats.items():
@@ -454,6 +520,11 @@ def _best_digit(patch, calib):
             s2, s1, c1 = s1, s, ch
         elif s > s2:
             s2 = s
+    m = _digit_model()
+    if m is not None:
+        mc, _mp, mpm = m.predict(patch)
+        if mc is not None:
+            return mc, s1, mpm
     return c1, s1, s1 - s2
 
 
@@ -506,6 +577,9 @@ def read_count_seg(tn, yc, calib, accept=0.50, margin_floor=0.04, cx=None):
     # than a digit is therefore a SUFFIX, not a digit -> it terminates the number. This is
     # the single most important decode fix: it stops the bracket from inflating every count.
     min_digit_w = calib.pitch * 0.62
+    # Ambiguity gate scale: the learned classifier reports a probability margin (0..1, large
+    # when confident) which rejects on a different scale than NCC's best-minus-second.
+    margin_gate = MODEL_MARGIN_FLOOR if _digit_model() is not None else margin_floor
     for i, (bx0, bx1) in enumerate(boxes):
         w = bx1 - bx0
         if w > calib.pitch * 1.8:                  # merged blob / not a single glyph
@@ -523,12 +597,13 @@ def read_count_seg(tn, yc, calib, accept=0.50, margin_floor=0.04, cx=None):
             # Only treat as a suffix when it CLEARLY beats the digit. A real separator like
             # '/' or '(' matches its suffix template strongly; a cloud-degraded digit (e.g. a
             # faint '7') only weakly resembles '/'. Requiring a margin keeps "270"/"216"
-            # intact in cloud while still cutting "5/2(L)" -> 5.
+            # intact in cloud while still cutting "5/2(L)" -> 5. (s stays NCC-scale even when
+            # the MLP supplies identity, so this comparison is unaffected by the classifier.)
             if nd > s + 0.12:
                 break
         if ch is None or s < accept:
             break
-        if mg < margin_floor:           # ambiguous digit -> value unknown, refuse to guess
+        if mg < margin_gate:            # ambiguous digit -> value unknown, refuse to guess
             return None
         digits += ch; conf += s; prev_x1 = bx1
         if len(digits) >= 4:                        # weapon counts are <= 3-4 digits
