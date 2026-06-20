@@ -1,0 +1,284 @@
+{
+  "clip": "hud_rec_20260618_153642/hud_rec_20260618_153552",
+  "frames": {
+    "0": {
+      "AAM": {
+        "status": "correct"
+      },
+      "CNN": {
+        "status": "correct"
+      },
+      "FLR": {
+        "status": "correct"
+      },
+      "RKT": {
+        "status": "value",
+        "value": 48
+      }
+    },
+    "100": {
+      "CNN": {
+        "status": "value",
+        "value": 119
+      },
+      "AAM": {
+        "status": "value",
+        "value": 4
+      },
+      "FLR": {
+        "status": "value",
+        "value": 9
+      },
+      "RKT": {
+        "status": "value",
+        "value": 48
+      }
+    },
+    "99": {
+      "CNN": {
+        "status": "value",
+        "value": 120
+      },
+      "FLR": {
+        "status": "value",
+        "value": 9
+      },
+      "RKT": {
+        "status": "value",
+        "value": 48
+      },
+      "AAM": {
+        "status": "value",
+        "value": 4
+      }
+    },
+    "101": {
+      "CNN": {
+        "status": "value",
+        "value": 118
+      }
+    },
+    "102": {
+      "CNN": {
+        "status": "value",
+        "value": 117
+      }
+    },
+    "103": {
+      "CNN": {
+        "status": "value",
+        "value": 116
+      }
+    },
+    "104": {
+      "CNN": {
+        "status": "value",
+        "value": 115
+      }
+    },
+    "133": {
+      "CNN": {
+        "status": "value",
+        "value": 114
+      }
+    },
+    "132": {
+      "CNN": {
+        "status": "value",
+        "value": 114
+      }
+    },
+    "131": {
+      "CNN": {
+        "status": "value",
+        "value": 115
+      }
+    },
+    "130": {
+      "CNN": {
+        "status": "value",
+        "value": 115
+      }
+    },
+    "134": {
+      "CNN": {
+        "status": "value",
+        "value": 113
+      }
+    },
+    "135": {
+      "CNN": {
+        "status": "value",
+        "value": 111
+      }
+    },
+    "146": {
+      "CNN": {
+        "status": "value",
+        "value": 110
+      }
+    },
+    "147": {
+      "CNN": {
+        "status": "value",
+        "value": 109
+      }
+    },
+    "148": {
+      "CNN": {
+        "status": "value",
+        "value": 108
+      }
+    },
+    "149": {
+      "CNN": {
+        "status": "value",
+        "value": 107
+      }
+    },
+    "150": {
+      "CNN": {
+        "status": "value",
+        "value": 106
+      }
+    },
+    "151": {
+      "CNN": {
+        "status": "value",
+        "value": 105
+      }
+    },
+    "152": {
+      "CNN": {
+        "status": "value",
+        "value": 105
+      }
+    },
+    "155": {
+      "CNN": {
+        "status": "value",
+        "value": 104
+      }
+    },
+    "156": {
+      "CNN": {
+        "status": "value",
+        "value": 103
+      }
+    },
+    "157": {
+      "CNN": {
+        "status": "value",
+        "value": 102
+      }
+    },
+    "158": {
+      "CNN": {
+        "status": "value",
+        "value": 101
+      }
+    },
+    "160": {
+      "CNN": {
+        "status": "value",
+        "value": 99
+      }
+    },
+    "161": {
+      "CNN": {
+        "status": "value",
+        "value": 98
+      }
+    },
+    "162": {
+      "CNN": {
+        "status": "value",
+        "value": 97
+      }
+    },
+    "163": {
+      "CNN": {
+        "status": "value",
+        "value": 96
+      }
+    },
+    "164": {
+      "CNN": {
+        "status": "value",
+        "value": 95
+      }
+    },
+    "165": {
+      "CNN": {
+        "status": "value",
+        "value": 94
+      }
+    },
+    "171": {
+      "CNN": {
+        "status": "value",
+        "value": 93
+      }
+    },
+    "172": {
+      "CNN": {
+        "status": "value",
+        "value": 92
+      }
+    },
+    "178": {
+      "CNN": {
+        "status": "value",
+        "value": 91
+      }
+    },
+    "180": {
+      "CNN": {
+        "status": "value",
+        "value": 90
+      }
+    },
+    "186": {
+      "CNN": {
+        "status": "value",
+        "value": 89
+      }
+    },
+    "193": {
+      "CNN": {
+        "status": "value",
+        "value": 89
+      },
+      "AAM": {
+        "status": "value",
+        "value": 4
+      },
+      "FLR": {
+        "status": "value",
+        "value": 9
+      },
+      "RKT": {
+        "status": "value",
+        "value": 48
+      }
+    },
+    "587": {
+      "AAM": {
+        "status": "value",
+        "value": 4
+      },
+      "CNN": {
+        "status": "value",
+        "value": 89
+      },
+      "FLR": {
+        "status": "value",
+        "value": 9
+      },
+      "RKT": {
+        "status": "value",
+        "value": 48
+      }
+    }
+  }
+}
