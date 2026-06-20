@@ -110,11 +110,32 @@ def build_segments(anchors, n_frames):
     return merged, pmerged
 
 
+def clamp_anchors(anchors, scope):
+    """Apply a per-weapon scope cap {wp:[lo,hi]}: drop anchor frames past hi (so a weapon that
+    leaves scope -- e.g. an arcade-only reload timer after depletion, which the user's real game
+    mode never shows -- is simply not tracked past that point). Anchors at/just before hi are
+    kept so the last in-scope value still holds to the cap."""
+    out = {}
+    for wp, anch in anchors.items():
+        cap = scope.get(wp)
+        if not cap:
+            out[wp] = anch
+            continue
+        lo, hi = cap
+        kept = [(fr, v) for (fr, v) in anch if fr <= hi]
+        out[wp] = kept
+    return out, {wp: scope[wp][1] for wp in scope}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("clip")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--keep-outliers", action="store_true")
+    ap.add_argument("--scope-out", action="append", default=[],
+                    help="Mark a weapon out-of-scope past a frame, e.g. BMB:424 (the row "
+                         "becomes arcade-only reload-timer data the real game mode never "
+                         "shows). Durable: stored in _scope and preserved on re-apply.")
     args = ap.parse_args()
 
     key = args.clip
@@ -134,23 +155,43 @@ def main():
         for wp, fr, v, a in dropped:
             print(f"   {wp} f{fr}: {v} -> using neighbour {a}")
 
-    # preserve _exclude (polluted frame ranges) from the prior GT file, if any
+    # preserve _exclude (polluted frame ranges) and _scope (per-weapon scope caps) from prior GT
     prev_exclude = []
+    prev_scope = {}
     prevp = os.path.join(GT_DIR, key.replace("/", "__") + ".json")
     if os.path.exists(prevp):
         try:
             with open(prevp, encoding="utf-8-sig") as f:
-                prev_exclude = json.load(f).get("_exclude", [])
+                prev = json.load(f)
+                prev_exclude = prev.get("_exclude", [])
+                prev_scope = prev.get("_scope", {})
         except Exception:
             prev_exclude = []
+            prev_scope = {}
+    # merge any new --scope-out CLI caps (start frame defaults to clip's first in-scope frame)
+    scope = dict(prev_scope)
+    for spec in args.scope_out:
+        wp, _, hi = spec.partition(":")
+        if wp and hi:
+            scope[wp] = [scope.get(wp, [0, 0])[0], int(hi)]
+    if scope:
+        anchors, _ = clamp_anchors(anchors, scope)
 
     data = {"_comment": f"VERIFIED from human feedback ({key}); hold-constant between marks.",
             "_unverified": False, "_present": {}}
     if prev_exclude:
         data["_exclude"] = prev_exclude
+    if scope:
+        data["_scope"] = scope
     for wp, anch in anchors.items():
         segs, present = build_segments(anch, n)
         if segs:
+            # clamp presence/segment END to the scope cap so out-of-scope frames aren't scored
+            cap = scope.get(wp)
+            if cap:
+                hi = cap[1]
+                segs = [[s, min(e, hi), v] for s, e, v in segs if s <= hi]
+                present = [[s, min(e, hi)] for s, e in present if s <= hi]
             data[wp] = segs
             data["_present"][wp] = present
 
