@@ -59,8 +59,17 @@ def anchors_for(clip, fb, keep_outliers=False):
             for i, (fr, v) in enumerate(seq):
                 if 0 < i < len(seq) - 1 and v is not None:
                     a = seq[i - 1][1]; b = seq[i + 1][1]
+                    # (1) big-spike typo: a lone value far from BOTH agreeing neighbours
+                    # (e.g. CHFF 270, 279, 270 -> the 279 is a slip).
                     if a is not None and b is not None and abs(v - a) > OUTLIER \
                             and abs(v - b) > OUTLIER and abs(a - b) <= 2:
+                        dropped.append((wp, fr, v, a))
+                        continue
+                    # (2) equal-anchor rule (user): between two EQUAL marks every frame holds
+                    # that value, so a lone mark that differs from both equal neighbours is a
+                    # stray (e.g. AAM 4, 3, 4 -> the 3 is a mis-click; a missile cannot launch
+                    # then un-launch). Any delta, since the neighbours pin the true value.
+                    if a is not None and b is not None and a == b and v != a:
                         dropped.append((wp, fr, v, a))
                         continue
                 clean.append((fr, v))
