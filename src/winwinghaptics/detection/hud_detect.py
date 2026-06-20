@@ -732,12 +732,20 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
             continue
         # Acceptance: the geometry is sticky-locked, so a row that the label can't verify
         # (its text obscured by terrain/cloud) is still trustworthy IF the number itself
-        # reads cleanly. Accept when the label verifies, OR a multi-digit value reads with
-        # decent confidence, OR a single digit reads very confidently. A weak-label,
-        # weak-read row is skipped (no false haptic). This recovers clear counts (e.g. CNN
-        # "48" over terrain where "CNN" is washed out) without inventing numbers.
+        # reads cleanly. Accept when the label verifies, OR the value reads with decent
+        # confidence. Single-digit values used to need a much higher bar (conf >= 0.88) because
+        # a lone glyph is the easiest to hallucinate from noise -- but the learned classifier's
+        # per-digit margin gate inside read_count_seg now rejects ambiguous glyphs outright, so
+        # a returned single digit is already confidently identified. The thin '1' glyph in
+        # particular has low NCC self-overlap (~0.58) and was being dropped on dark/odd-contrast
+        # frames where its label also degraded, blanking readable rows (e.g. BMB '1(F)' on a
+        # dark-ground frame). With the model active we therefore use ONE uniform confidence bar
+        # for any digit count; without it we keep the stricter single-digit rule.
         val, conf = best_rc
-        strong = (conf >= 0.55 and val >= 10) or conf >= 0.88
+        if _digit_model() is not None:
+            strong = conf >= 0.55
+        else:
+            strong = (conf >= 0.55 and val >= 10) or conf >= 0.88
         if label_ok or strong:
             out[wp] = best_rc
     if return_shift and return_cx:

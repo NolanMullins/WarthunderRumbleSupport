@@ -1,42 +1,42 @@
 {
-  "detector_hash": "be51b1cdf518",
+  "detector_hash": "be1f638c5c4c",
   "aggregate": {
     "present_cells": 10449,
-    "missed_row": 557,
-    "missed_row_rate": 0.053306536510670875,
-    "false_row": 8,
-    "scored_value_cells": 9892,
-    "misread": 376,
-    "misread_rate": 0.03801051354630004,
-    "events": 86,
-    "hits": 79,
+    "missed_row": 370,
+    "missed_row_rate": 0.03541008708967365,
+    "false_row": 10,
+    "scored_value_cells": 10079,
+    "misread": 388,
+    "misread_rate": 0.038495882528028574,
+    "events": 87,
+    "hits": 80,
     "misses": 7,
-    "false_fires": 16,
-    "event_miss_rate": 0.08139534883720931,
+    "false_fires": 15,
+    "event_miss_rate": 0.08045977011494253,
     "calib_missing_rows": []
   },
   "per_recording": {
     "hud_rec_20260618_101336/hud_rec_20260618_101336": {
-      "missed_row_rate": 0.014583333333333334,
-      "misread_rate": 0.0824524312896406,
+      "missed_row_rate": 0.009027777777777777,
+      "misread_rate": 0.08759635599159075,
       "event_miss_rate": 0.1,
       "event_false_fires": 8
     },
     "hud_rec_20260618_111503/hud_rec_20260618_111503": {
-      "missed_row_rate": 0.08565459610027855,
-      "misread_rate": 0.05407463823305408,
+      "missed_row_rate": 0.05362116991643454,
+      "misread_rate": 0.08535688005886681,
       "event_miss_rate": 0.0,
       "event_false_fires": 0
     },
     "hud_rec_20260618_140000/hud_rec_20260618_140000": {
-      "missed_row_rate": 0.058864998237574906,
-      "misread_rate": 0.03707865168539326,
-      "event_miss_rate": 0.08,
-      "event_false_fires": 4
+      "missed_row_rate": 0.022911526260133944,
+      "misread_rate": 0.015873015873015872,
+      "event_miss_rate": 0.07692307692307693,
+      "event_false_fires": 3
     },
     "hud_rec_20260618_153642/hud_rec_20260618_153552": {
-      "missed_row_rate": 0.10416666666666667,
-      "misread_rate": 0.03939250118652112,
+      "missed_row_rate": 0.09098639455782313,
+      "misread_rate": 0.045369504209541625,
       "event_miss_rate": 0.10344827586206896,
       "event_false_fires": 3
     },
