@@ -36,3 +36,6 @@ calib.json
 .idea/
 .DS_Store
 Thumbs.db
+tools/_crops/
+tests/.cache/
+tests/pinned_calib/
