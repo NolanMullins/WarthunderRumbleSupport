@@ -1,6 +1,32 @@
-﻿{
-  "_comment": "CANDIDATE GT auto-derived from saved reads of hud_rec_20260618_153642/hud_rec_20260618_153642; HAND-VERIFY. Return-to-same misread excursions were auto-collapsed; real monotonic fires preserved. Verify fire counts/values before setting _unverified=false.",
-  "_unverified": true,
+{
+  "_comment": "VERIFIED from human feedback (hud_rec_20260618_153642/hud_rec_20260618_153642); hold-constant between marks.",
+  "_unverified": false,
+  "_present": {
+    "AAM": [
+      [
+        0,
+        595
+      ]
+    ],
+    "CNN": [
+      [
+        0,
+        595
+      ]
+    ],
+    "FLR": [
+      [
+        0,
+        595
+      ]
+    ],
+    "RKT": [
+      [
+        0,
+        595
+      ]
+    ]
+  },
   "AAM": [
     [
       0,
@@ -11,21 +37,41 @@
   "CNN": [
     [
       0,
-      297,
+      280,
       89
     ],
     [
-      298,
-      353,
-      81
+      281,
+      281,
+      88
     ],
     [
-      354,
-      411,
-      21
+      282,
+      282,
+      87
     ],
     [
-      412,
+      283,
+      283,
+      86
+    ],
+    [
+      284,
+      284,
+      84
+    ],
+    [
+      285,
+      285,
+      83
+    ],
+    [
+      286,
+      286,
+      82
+    ],
+    [
+      287,
       595,
       81
     ]
@@ -33,11 +79,11 @@
   "FLR": [
     [
       0,
-      405,
+      385,
       9
     ],
     [
-      406,
+      386,
       595,
       8
     ]
@@ -45,16 +91,6 @@
   "RKT": [
     [
       0,
-      357,
-      48
-    ],
-    [
-      358,
-      408,
-      4
-    ],
-    [
-      409,
       595,
       48
     ]
