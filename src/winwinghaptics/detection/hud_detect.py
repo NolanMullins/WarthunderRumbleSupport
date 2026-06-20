@@ -889,14 +889,21 @@ class TemporalTracker:
         it, so this stays False all the way down (248,246,244,242 ...). Used to veto fires
         for fast weapons (gun/countermeasures) only; one suppressed tick is harmless because
         rumble is sustained, but a phantom buzz while merely sitting at a flickering count is
-        not. A held single step (100,100,99,99) is monotonic -> not flagged, still fires."""
+        not. A held single step (100,100,99,99) is monotonic -> not flagged, still fires.
+
+        Only a return to NEAR the baseline counts as a recovery: a genuine flicker bounces back
+        to ~cur (248<->242), whereas a gross transient misread (e.g. a one-frame 652 while the
+        true count is ~250) is way above cur and is NOT a recovery -- it must be ignored, or that
+        single garbage frame poisons the veto and eats a whole real burst of fires. Bound the
+        recovery band to [cur, cur*1.15]."""
+        hi = cur * 1.15 + 1
         seen_lower = False
         for v in self.hist[wp]:                # oldest -> newest (longer history)
             if v is None:
                 continue
             if v < cur:
                 seen_lower = True
-            elif v >= cur and seen_lower:
+            elif cur <= v <= hi and seen_lower:
                 return True
         return False
 

@@ -91,7 +91,7 @@ for clip in R.discover():
     gt = G.load(clip.key, len(grays))
     if gt.unverified:
         continue
-    clip_tag = clip.key.split("/")[0][-6:]
+    clip_tag = clip.key.split("/")[-1][-6:]
     for i, g in enumerate(grays):
         if gt.is_excluded(i):
             continue
