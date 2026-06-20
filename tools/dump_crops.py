@@ -15,11 +15,11 @@ os.makedirs(OUT, exist_ok=True)
 
 # (clip_key substring, weapon, frame, true, got) — pulled from taxonomy/diag earlier
 CASES = [
-    ("140000", "CNN", 253, 268, 208),
-    ("140000", "CNN", 254, 266, 200),
-    ("140000", "AAM", 182, 3, None),
-    ("101336", "CNN", 120, 216, 215),
-    ("140000", "RKT", 300, 24, None),
+    ("140000", "AAM", 190, 3, 4),
+    ("140000", "AAM", 200, 3, 4),
+    ("140000", "CHFF", 515, 268, 270),
+    ("140000", "CNN", 500, 242, 238),
+    ("140000", "BMB", 460, 0, 4),
 ]
 
 def upscale(a, k=8):
