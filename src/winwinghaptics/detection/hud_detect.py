@@ -580,10 +580,31 @@ def read_count_seg(tn, yc, calib, accept=0.50, margin_floor=0.04, cx=None):
     # Ambiguity gate scale: the learned classifier reports a probability margin (0..1, large
     # when confident) which rejects on a different scale than NCC's best-minus-second.
     margin_gate = MODEL_MARGIN_FLOOR if _digit_model() is not None else margin_floor
-    for i, (bx0, bx1) in enumerate(boxes):
-        w = bx1 - bx0
-        if w > calib.pitch * 1.8:                  # merged blob / not a single glyph
+    # Split over-wide blobs at the monospace pitch. A digit can MERGE with cloud/terrain ink
+    # (e.g. the trailing '0' of "120" fusing with a cloud chevron behind it -> one 34px box):
+    # the old loop simply broke on the wide box and dropped that digit ("120" -> "12"). Since
+    # the font is monospace, an over-wide box that begins at a real digit position is the digit
+    # PLUS attached junk -- carve the leading digit_w slice and re-queue the remainder so the
+    # next iteration can read it (or drop it as junk via the normal narrow/score gates).
+    digit_w = max(min_digit_w, calib.pitch * 0.82)
+    work = list(boxes)
+    split_from = set()                              # indices that came from carving a wide blob
+    i = -1
+    while True:
+        i += 1
+        if i >= len(work):
             break
+        bx0, bx1 = work[i]
+        w = bx1 - bx0
+        if w > calib.pitch * 1.6:
+            cut = int(round(bx0 + digit_w))
+            if cut < bx1 - 3:                       # carve leading digit, re-queue remainder
+                work[i] = (bx0, cut)
+                work.insert(i + 1, (cut + 1, bx1))
+                split_from.add(i); split_from.add(i + 1)
+                bx1 = cut; w = bx1 - bx0
+            else:
+                break                               # genuinely one fat blob -> stop
         if prev_x1 is not None and (bx0 - prev_x1) > calib.pitch * 0.7:
             break                                   # gap -> end of number (before suffix)
         if w < min_digit_w:                         # too narrow to be a digit -> suffix glyph
@@ -602,6 +623,12 @@ def read_count_seg(tn, yc, calib, accept=0.50, margin_floor=0.04, cx=None):
             if nd > s + 0.12:
                 break
         if ch is None or s < accept:
+            break
+        # A carved sub-box (from splitting a cloud-merged blob) is only trusted when it reads
+        # STRONGLY -- the carve boundary is approximate, so a weak read there is likely cloud
+        # ink, not a real digit. This keeps the split from inventing digits (which would turn a
+        # 2-digit value into a wrong 3-digit one) while still recovering a clean merged digit.
+        if i in split_from and not (s >= 0.62 and mg >= margin_gate * 1.5):
             break
         if mg < margin_gate:            # ambiguous digit -> value unknown, refuse to guess
             return None
