@@ -956,17 +956,21 @@ class TemporalTracker:
                         continue
             # DISCRETE fast-onset: discrete ordnance (missile/rocket/bomb) fires ONE shot per
             # decrement -- there is no continuous burst to flicker, so a real launch shows as a
-            # clean step DOWN that then holds. The moment the last TWO raw reads AGREE on a new
-            # lower plausible value (a == b < cur, _is_fire), fire immediately instead of
-            # waiting ~4 frames for the median to catch up. This removes the felt input lag on
-            # rockets/missiles that the median path otherwise scored as a late onset. The
-            # two-frame agreement rejects a 1-frame misread; _is_fire rejects truncation
-            # clusters; firing sets the baseline so the median path won't re-fire the same step.
+            # clean step DOWN. Fire the instant TWO raw reads support a new lower value instead
+            # of waiting ~4 frames for the median (which scored real launches as late onsets).
+            # Two supported shapes, both needing 2 frames so a 1-frame misread can't trigger:
+            #   * HELD:    a == b < cur          (a single launch that lands and stays, 4,4,3,3)
+            #   * DESCENT: cur > a > b           (a rapid multi-round drop, 34,33,32 -- without
+            #     this the held path waits for two EQUAL reads and fires a frame late, which made
+            #     the FIRST step of a fast salvo miss its tight scoring window).
+            # _is_fire rejects truncation clusters; firing to b sets the baseline so the median
+            # path won't re-fire the step. leading-digit-flip / recovery vetoes are NOT applied
+            # to discrete (a same-trailing drop like 24->14 is a real launch, not a misread).
             if cls == "discrete":
                 vv = [x for x in self.raw[wp] if x is not None]
                 if len(vv) >= 2:
                     a, b = vv[-2], vv[-1]
-                    if a == b and b < cur and self._is_fire(cls, cur, b):
+                    if b < cur and b <= a < cur and self._is_fire(cls, cur, b):
                         events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
                                        cur - b, cur, b))
                         self.conf[wp] = b
