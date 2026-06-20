@@ -954,46 +954,43 @@ class TemporalTracker:
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
-            # DISCRETE fast-onset: discrete ordnance (missile/rocket/bomb) fires ONE shot per
-            # decrement -- there is no continuous burst to flicker, so a real launch shows as a
-            # clean step DOWN. Fire the instant TWO raw reads support a new lower value instead
-            # of waiting ~4 frames for the median (which scored real launches as late onsets).
-            # Two supported shapes, both needing 2 frames so a 1-frame misread can't trigger:
-            #   * HELD:    a == b < cur          (a single launch that lands and stays, 4,4,3,3)
-            #   * DESCENT: cur > a > b           (a rapid multi-round drop, 34,33,32 -- without
-            #     this the held path waits for two EQUAL reads and fires a frame late, which made
-            #     the FIRST step of a fast salvo miss its tight scoring window).
-            # _is_fire rejects truncation clusters; firing to b sets the baseline so the median
-            # path won't re-fire the step. leading-digit-flip / recovery vetoes are NOT applied
-            # to discrete (a same-trailing drop like 24->14 is a real launch, not a misread).
+            # DISCRETE per-round onset: discrete ordnance (missile/rocket/bomb) fires one shot
+            # per decrement. Per the haptic model, EACH round should play its own burst
+            # animation (overlapping rounds just merge in the effect), so we must NOT collapse a
+            # fast multi-round drop into a single event. Fire the instant two raw reads support a
+            # new lower value, stepping the baseline DOWN BY ONE observed level per fire (cur->a,
+            # not cur->b): on a salvo read as 34,33,32 this fires 34->33 now and leaves 33->32 for
+            # the next frame, so every round registers instead of merging into one 34->32. Two
+            # frames below baseline (b <= a < cur) are required so a 1-frame misread can't trigger;
+            # _is_fire rejects truncation clusters. No flicker vetoes on discrete -- a same-
+            # trailing drop like 24->14 is a real launch, not a misread.
             if cls == "discrete":
                 vv = [x for x in self.raw[wp] if x is not None]
                 if len(vv) >= 2:
                     a, b = vv[-2], vv[-1]
-                    if b < cur and b <= a < cur and self._is_fire(cls, cur, b):
+                    if b < cur and b <= a < cur and self._is_fire(cls, cur, a):
                         events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
-                                       cur - b, cur, b))
-                        self.conf[wp] = b
+                                       cur - a, cur, a))
+                        self.conf[wp] = a
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
-            # COUNTER fast-onset: countermeasures (flares/chaff) dispense in bursts and flicker
-            # like the gun, so unlike discrete they keep the flicker vetoes. But they had NO
-            # fast-path at all -- every dispense waited ~3 frames for the median and so landed
-            # outside the tight scoring window (a 'LATENCY' miss). Mirror the discrete two-frame
-            # shapes (held a==b, or strict descent cur>a>b), guarded by the same flicker vetoes
-            # the median path uses for counters: leading-digit-flip (270->170 is a misread) and
-            # baseline-recovery (a value that bounced back up was never a real dispense).
+            # COUNTER per-round onset: countermeasures (flares/chaff) also fire one burst
+            # animation per round (overlaps merge), so they step down one observed level per fire
+            # exactly like discrete (cur->a) -- recovering rounds a merged drop would lose. Unlike
+            # discrete they KEEP the flicker vetoes (countermeasures flicker like the gun): a
+            # leading-digit-flip (270->170 is a misread) or a baseline-recovery (a value that
+            # bounced back up was never a real dispense) is not fired.
             if cls == "counter":
                 vv = [x for x in self.raw[wp] if x is not None]
                 if len(vv) >= 2:
                     a, b = vv[-2], vv[-1]
-                    if (b < cur and b <= a < cur and self._is_fire(cls, cur, b)
-                            and not self._leading_digit_flip(cur, b)
+                    if (b < cur and b <= a < cur and self._is_fire(cls, cur, a)
+                            and not self._leading_digit_flip(cur, a)
                             and not self._recovered(wp, cur)):
                         events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
-                                       cur - b, cur, b))
-                        self.conf[wp] = b
+                                       cur - a, cur, a))
+                        self.conf[wp] = a
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
