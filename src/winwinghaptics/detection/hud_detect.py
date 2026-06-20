@@ -767,61 +767,6 @@ _CAL_LABELS = ["RKT", "BMB", "AAM", "FLR", "CHFF", "CNN"]
 from collections import deque, Counter
 
 
-class ReadStabilizer:
-    """Despeckle the per-frame read stream BEFORE the tracker sees it.
-
-    Measured fact (tools/flicker_vs_bias.py): ~57% of correctly-readable frames live in
-    'flicker' segments -- the true value is the per-frame plurality but a minority of frames
-    misread a single digit (e.g. 216 reading 215, 268 reading 269). Each frame is decoded
-    independently, so these lone blips slip straight through to the value metric and can nudge
-    the tracker. They are the single largest fixable read error.
-
-    A flicker blip has a signature a continuous change does NOT: the value departs from a
-    strong recent consensus for ONE frame and the immediately-preceding read was still ON that
-    consensus. A real fire/reload instead produces a SUSTAINED new value -- the frame before
-    the change is the old value, but the frame after is the new value, so the 'previous read ==
-    consensus' guard releases it after a single frame. That bounds correction to exactly one
-    frame at any genuine transition (~50 ms at 20 Hz, bridged by the tracker), which is why a
-    gun burst that steps down every frame is NOT frozen: only its first step is held, then each
-    subsequent step's predecessor is already off-consensus so it passes straight through.
-
-    History holds RAW reads, so the consensus always reflects what the detector actually saw.
-    Bias segments (a digit MIS-read the majority of the time) are not helped -- the plurality is
-    wrong there -- but those are only ~6% of frames and need better glyph templates, not voting.
-    """
-    def __init__(self, win=5, min_cons=3):
-        self.win = win
-        self.min_cons = min_cons
-        self._raw = {}          # wp -> deque(maxlen=win) of recent raw int reads
-        self._prev = {}         # wp -> previous frame's raw read (or None)
-
-    def reset(self):
-        self._raw.clear()
-        self._prev.clear()
-
-    def feed(self, reads):
-        """reads: {wp: (val, conf)} from read_counts -> same shape, lone flicker corrected."""
-        out = {}
-        for wp, rc in reads.items():
-            val, conf = rc
-            h = self._raw.get(wp)
-            if h is None:
-                h = deque(maxlen=self.win)
-                self._raw[wp] = h
-            corrected = val
-            if len(h) >= self.min_cons:
-                cons, cons_n = Counter(h).most_common(1)[0]
-                # Correct only a LONE departure from a strong consensus whose predecessor was
-                # still on that consensus -- the unmistakable flicker signature. A started
-                # descent (prev already off consensus) is passed through untouched.
-                if val != cons and cons_n >= self.min_cons and self._prev.get(wp) == cons:
-                    corrected = cons
-            h.append(val)
-            self._prev[wp] = val
-            out[wp] = (corrected, conf)
-        return out
-
-
 class TemporalTracker:
     """Turn a stream of noisy per-frame reads into reliable FIRE events.
 
@@ -1398,7 +1343,6 @@ class HudDetector:
         self.max_drop_rapid = max_drop_rapid
         self.calib = None
         self.tracker = TemporalTracker()
-        self.stab = ReadStabilizer()
         self.shift = None                      # sticky block shift (fixed HUD -> stable)
         self.cx = None                         # sticky count-column x (tooltip push/snap)
         self.available = (np is not None)
@@ -1412,7 +1356,6 @@ class HudDetector:
 
     def reset(self):
         self.tracker.reset()
-        self.stab.reset()
         self.shift = None
         self.cx = None
 
@@ -1504,7 +1447,6 @@ class HudDetector:
                 cx_hint=self.cx, return_cx=True)
         except Exception:
             return [], {}
-        reads = self.stab.feed(reads)
         events = self.tracker.update(reads)
         counts = {wp: v for wp, (v, _c) in reads.items()}
         return events, counts
@@ -1532,7 +1474,6 @@ class HudDetector:
         (per-weapon read+confidence, confirmed baselines before/after, recent read window,
         timings). Returns (events, counts, gray_frame, info)."""
         g, reads, timings = self.poll_capture()
-        reads = self.stab.feed(reads)
         pre_conf = dict(self.tracker.conf)
         events = self.tracker.update(reads)
         counts = {wp: v for wp, (v, _c) in reads.items()}

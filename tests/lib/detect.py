@@ -137,11 +137,9 @@ def redetect(clip, use_cache=True):
         grays = clip.grays()
         reads = []
         shift = cx = None
-        stab = H.ReadStabilizer()
         for g in grays:
             rd, shift, cx = H.read_counts(
                 g, cal, shift_hint=shift, return_shift=True, cx_hint=cx, return_cx=True)
-            rd = stab.feed(rd)
             reads.append({wp: int(v[0]) for wp, v in rd.items()})
         out = {"source": source,
                "calib_rows": {k: int(v) for k, v in cal.rows.items()},
