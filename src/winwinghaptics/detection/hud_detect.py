@@ -977,6 +977,26 @@ class TemporalTracker:
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
+            # COUNTER fast-onset: countermeasures (flares/chaff) dispense in bursts and flicker
+            # like the gun, so unlike discrete they keep the flicker vetoes. But they had NO
+            # fast-path at all -- every dispense waited ~3 frames for the median and so landed
+            # outside the tight scoring window (a 'LATENCY' miss). Mirror the discrete two-frame
+            # shapes (held a==b, or strict descent cur>a>b), guarded by the same flicker vetoes
+            # the median path uses for counters: leading-digit-flip (270->170 is a misread) and
+            # baseline-recovery (a value that bounced back up was never a real dispense).
+            if cls == "counter":
+                vv = [x for x in self.raw[wp] if x is not None]
+                if len(vv) >= 2:
+                    a, b = vv[-2], vv[-1]
+                    if (b < cur and b <= a < cur and self._is_fire(cls, cur, b)
+                            and not self._leading_digit_flip(cur, b)
+                            and not self._recovered(wp, cur)):
+                        events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
+                                       cur - b, cur, b))
+                        self.conf[wp] = b
+                        self._cand.pop(wp, None)
+                        self._last_drop[wp] = self._t
+                        continue
             if level == cur:
                 self._cand.pop(wp, None)           # back on baseline -> clear any candidate
                 continue
