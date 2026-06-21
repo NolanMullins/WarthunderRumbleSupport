@@ -6,8 +6,8 @@ controller is mostly about writing one backend class.
 
 ## What a device has to provide
 
-Every backend implements the `HapticDevice` interface in
-`src/winwinghaptics/hardware/base.py`:
+Every backend subclasses `HapticDevice` (`src/winwinghaptics/hardware/base.py`) and implements
+these abstract members:
 
 | Method / property | Job |
 |---|---|
@@ -18,38 +18,49 @@ Every backend implements the `HapticDevice` interface in
 | `arm()` | Send the keep-alive / arm packet (return `True`; make it a no-op if the device doesn't need one) |
 | `set_level(level)` | Set vibration from a normalized `0.0`-`1.0` value |
 
-The existing Winwing backend (`hardware/winwing.py`) also keeps a legacy native `vib(0..255)`
-method because the effects engine currently calls `vib()` directly. If your device follows the
-same pattern, the simplest path is to expose a native `vib()` and have `set_level()` scale into
-it, exactly like `WinwingUrsaMinor` does.
+The base class also PROVIDES (you don't implement these) `start_keepalive()` and
+`keepalive(now=None)`: the engine's heartbeat loop calls them and they re-arm on your
+`Capabilities.heartbeat_interval`, so you never write a heartbeat loop. Override them only for
+unusual keep-alive needs.
+
+The effects engine drives every device through `set_level(0.0-1.0)`, so that's the method that
+matters. The Winwing backend (`hardware/winwing.py`) also keeps a native `vib(0..255)` helper and
+has `set_level()` scale into it; that's a convenient pattern for any single-motor device, but it's
+optional.
 
 ## Steps
 
 1. **Create the backend.** Add `src/winwinghaptics/hardware/<yourdevice>.py` with a class that
    subclasses `HapticDevice` and implements the methods above. Use `hardware/hid_win.py` for
    raw USB HID transport (find by vendor ID + HID usage, open, write output reports) if your
-   device is HID.
+   device is HID. Add a static `probe()` that cheaply returns whether the device is present (the
+   registry uses it for discovery).
 
 2. **Describe it.** Return a `Capabilities` from the `capabilities` property so the engine can
-   adapt (for example, `needs_heartbeat` controls whether it gets periodically re-armed).
+   adapt (for example, `needs_heartbeat` / `heartbeat_interval` control re-arming).
 
-3. **Export it.** Add your class to `src/winwinghaptics/hardware/__init__.py` so it's importable
-   from `winwinghaptics.hardware`.
-
-4. **Wire it up.** The controller currently constructs the Winwing directly in
-   `src/winwinghaptics/app/controller.py`:
+3. **Register it.** Add your class to `src/winwinghaptics/hardware/__init__.py` and call
+   `register(YourDevice)` there, the same way `WinwingUrsaMinor` is registered. Discovery and
+   selection then pick it up automatically:
 
    ```python
-   self.stick = Stick()
+   from .registry import register
+   register(YourDevice)
    ```
 
-   To bring up a new device, swap that for your class (or add device selection / auto-probe
-   logic there). There is no device registry yet, so this is a manual edit for now.
+   The controller calls `select_device()`, which returns the first backend whose `probe()` reports
+   present, so you do NOT edit the controller to add hardware.
+
+4. **Custom playback (optional).** If your device uploads a whole pattern and owns its own timing
+   (rather than being driven level-by-level), give it a `make_renderer()` that returns a renderer
+   for it; `renderer_for()` uses it instead of the default `StreamingRenderer`. See
+   `docs/Architecture.md` for the effect-descriptor / renderer model.
 
 5. **Update the docs.** Add the device to the Supported hardware table in the root `README.md`.
 
 ## Reference
 
 Use `hardware/winwing.py` as the template. It's a small, complete example: HID discovery by
-vendor ID and joystick usage, an arm packet resent on a heartbeat, and a vibration frame whose
-last byte is the 0-255 intensity. The HID plumbing it relies on lives in `hardware/hid_win.py`.
+vendor ID and joystick usage, a `probe()`, an arm packet, and a `set_level()` that scales the
+normalized intensity to the device's native range. The HID plumbing it relies on lives in
+`hardware/hid_win.py`.

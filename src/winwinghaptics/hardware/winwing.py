@@ -31,6 +31,15 @@ class WinwingUrsaMinor(HapticDevice):
                             supports_intensity=True, needs_heartbeat=True,
                             heartbeat_interval=2.5)
 
+    @staticmethod
+    def probe():
+        """Cheap presence check for discovery: True if a Winwing HID interface is plugged in.
+        Does not hold the device open (the registry opens the selected one)."""
+        try:
+            return hid_win.find_device_path(WW_VID, usage_page=0x0001, usage=0x0004) is not None
+        except Exception:
+            return False
+
     def open(self):
         path = hid_win.find_device_path(WW_VID, usage_page=0x0001, usage=0x0004)
         if not path:

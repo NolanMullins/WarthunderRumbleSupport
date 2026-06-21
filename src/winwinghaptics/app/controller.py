@@ -16,7 +16,7 @@ import queue
 import threading
 
 from .. import config
-from ..hardware import Stick
+from ..hardware import select_device
 from ..effects import Effects
 from ..effects import dispatch
 from ..sources import WarThunder
@@ -48,7 +48,7 @@ class AppController:
         self.HUD_CALIB = os.path.join(base_dir, config.HUD_CALIB_NAME)
         self.hud_available = HUD_AVAILABLE
 
-        self.stick = Stick()
+        self.stick = select_device()
         self.effects = Effects(self.stick)
         self.wt = WarThunder()
         self.ui = NullUiBridge()

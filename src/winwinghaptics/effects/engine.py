@@ -5,20 +5,24 @@ effects (missile/rocket/bomb/flare/kill/hit/death) run on a short worker thread 
 PRIORITY of the motor while playing, so their strong envelope is never stomped by the gun
 rumble; when a one-shot ends, the gun rumble resumes if the trigger is still held.
 
-Behavior is a faithful transcription of the original Effects class: same heartbeat cadence,
-same priority arbitration, same per-effect timing (now sourced from effects.library), and the
-same native 0-255 output via device.vib(). (Normalized set_level() exists on the device for a
-future migration but is intentionally not used here to keep felt output byte-identical.)
+The engine orchestrates (heartbeat, gun sustain, priority arbitration) but no longer hardcodes
+how an effect is played: it asks the device's renderer to render an Effect descriptor (see
+effects.model / effects.renderer). The default StreamingRenderer streams normalized levels via
+set_level(0.0-1.0), so any HapticDevice works and a pattern-upload device can supply its own
+renderer. On the Winwing the normalized levels map back to the original 0-255 values exactly, so
+felt output is unchanged.
 """
 import threading
 import time
 
-from .library import EFFECTS
+from .library import get_effect, GUN_LEVEL
+from .renderer import renderer_for
 
 
 class EffectsEngine:
     def __init__(self, device, logfn=lambda s: None):
-        self.stick = device                # a HapticDevice (Winwing); .vib()/.arm() native
+        self.stick = device                # a HapticDevice; driven via set_level(0.0-1.0)
+        self.renderer = renderer_for(device)  # per-device playback strategy (streaming by default)
         self.log = logfn
         self._stop = threading.Event()
         self._hb = None
@@ -39,32 +43,33 @@ class EffectsEngine:
     def stop(self):
         self._stop.set()
         try:
-            self.stick.vib(0)
+            self.stick.set_level(0.0)
         except Exception:
             pass
 
     def _hb_loop(self):
-        # arm immediately, then every 2.5s; also services the continuous gun rumble
+        # arm immediately, then on the device's own keep-alive cadence; also services the
+        # continuous gun rumble.
         try:
-            self.stick.arm()
+            self.stick.start_keepalive()
         except Exception:
             pass
-        last_arm = time.time()
         while not self._stop.is_set():
             now = time.time()
-            if now - last_arm >= 2.5:
-                self.stick.arm()
-                last_arm = now
+            try:
+                self.stick.keepalive(now)
+            except Exception:
+                pass
             # continuous gun rumble while active -- BUT a one-shot effect takes priority and
             # owns the motor while it plays. When it finishes, the gun rumble resumes if the
             # trigger is still held.
             if self._priority:
                 pass                                   # one-shot owns the motor
             elif now < self._gun_until:
-                self.stick.vib(135)
+                self.stick.set_level(GUN_LEVEL)
                 self._gun_on = True
             elif self._gun_on:
-                self.stick.vib(0)
+                self.stick.set_level(0.0)
                 self._gun_on = False
             time.sleep(0.05)
 
@@ -73,12 +78,6 @@ class EffectsEngine:
         """Call repeatedly while weapon2==1; keeps the rumble alive `dur` seconds."""
         self._gun_until = max(self._gun_until, time.time() + dur)
 
-    def _hold(self, level, ms):
-        end = time.time() + ms / 1000.0
-        while time.time() < end and not self._stop.is_set():
-            self.stick.vib(level)
-            time.sleep(0.003)
-
     def _run_oneshot(self, fn):
         def wrap():
             with self._oneshot_lock:
@@ -86,24 +85,18 @@ class EffectsEngine:
                 try:
                     fn()
                 finally:
-                    self.stick.vib(0)          # leave the motor quiet for the heartbeat
+                    self.stick.set_level(0.0)  # leave the motor quiet for the heartbeat
                     self._priority = False     # gun rumble resumes if trigger still held
         threading.Thread(target=wrap, daemon=True).start()
 
     def play(self, name):
-        """Play a named one-shot effect from the library (data-driven)."""
-        eff = EFFECTS.get(name)
+        """Play a named one-shot Effect from the library via the device's renderer."""
+        eff = get_effect(name)
         if not eff:
             return
-        if eff["log"]:
-            self.log(eff["log"])
-        segments = eff["segments"]
-
-        def seq():
-            for level, ms in segments:
-                self._hold(level, ms)
-            self.stick.vib(0)
-        self._run_oneshot(seq)
+        if eff.log:
+            self.log(eff.log)
+        self._run_oneshot(lambda: self.renderer.render(eff, self._stop.is_set))
 
     # --- named convenience triggers (kept for the existing call sites) ---
     def missile(self):
