@@ -16,7 +16,7 @@ import queue
 import threading
 
 from .. import config
-from ..hardware import Stick
+from ..hardware import select_device
 from ..effects import Effects
 from ..effects import dispatch
 from ..sources import WarThunder
@@ -29,6 +29,12 @@ try:
 except Exception:
     hud_detect = None
     HUD_AVAILABLE = False
+
+
+# Canonical list of toggleable effects (state key is "en_<name>"). Mirrors the effects engine
+# triggers; the UI's effect spec presents the same names. All default ON, so adding a key here
+# without a saved-config value keeps the original "always fires" behavior.
+EFFECT_ENABLE_KEYS = ["gun", "missile", "rocket", "bomb", "flare", "kill", "hit", "death"]
 
 
 class NullUiBridge:
@@ -48,7 +54,7 @@ class AppController:
         self.HUD_CALIB = os.path.join(base_dir, config.HUD_CALIB_NAME)
         self.hud_available = HUD_AVAILABLE
 
-        self.stick = Stick()
+        self.stick = select_device()
         self.effects = Effects(self.stick)
         self.wt = WarThunder()
         self.ui = NullUiBridge()
@@ -68,9 +74,11 @@ class AppController:
             "hud_rec_n": 0,
             "callsign": "",
             "running": True,
+            "firing_gun": False,   # set by the HUD worker; lets the UI light the live gun row
             # plain-bool mirrors of the Tk enable checkboxes, updated from the UI thread.
             # Worker threads read THESE (never the Tk BooleanVars, which aren't thread-safe).
-            "en_gun": True, "en_kill": True, "en_hit": True, "en_death": True,
+            # All effects default ON; the GUI applies any saved overrides from config.
+            **{f"en_{k}": True for k in EFFECT_ENABLE_KEYS},
         }
 
         self._log_q = queue.Queue()
@@ -107,13 +115,16 @@ class AppController:
 
     def save_cfg(self):
         data = {
-            "enables": {"gun": self.state["en_gun"], "kill": self.state["en_kill"],
-                        "hit": self.state["en_hit"], "death": self.state["en_death"]},
+            "enables": {k: self.state[f"en_{k}"] for k in EFFECT_ENABLE_KEYS},
             "hud_on": self.state["hud_on"],
             "hud_region": list(self.state["hud_region"]),
             "callsign": self.state.get("callsign", ""),
         }
         config.save(self.CONFIG, data)
+
+    def enabled(self, name):
+        """Whether the effect `name` is enabled (defaults True for unknown names)."""
+        return bool(self.state.get(f"en_{name}", True))
 
     # ---- shared detector + one-time template calibration ----
     def get_det(self):
@@ -407,9 +418,11 @@ class AppController:
             dispatch_plan = dispatch.plan(events, now, last_counter_knock)
             for action in dispatch_plan.actions:
                 if action[0] == "flare":
-                    self.effects.flare()
+                    if self.enabled("flare"):
+                        self.effects.flare()
                 else:                              # ("fire_effect", effect_name)
-                    self.effects.fire_effect(action[1])
+                    if self.enabled(action[1]):
+                        self.effects.fire_effect(action[1])
             for line in dispatch_plan.logs:
                 self.log(line, "fx")
             last_counter_knock = dispatch_plan.last_counter_knock
@@ -420,8 +433,9 @@ class AppController:
                                  for w, c in hud_detect.WEAPON_CLASS.items() if c == "rapid")
             except Exception:
                 gun_firing = False
-            if gun_firing:
+            if gun_firing and self.enabled("gun"):
                 self.effects.gun_active(0.18)
+            self.state["firing_gun"] = bool(gun_firing)
             if recording and rec_info is not None:
                 n = self.state["hud_rec_n"]
                 self.state["hud_rec_n"] = n + 1
