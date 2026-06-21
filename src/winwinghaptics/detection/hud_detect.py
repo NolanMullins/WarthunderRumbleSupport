@@ -720,7 +720,14 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
         yc0 = y0 + shift
         # Candidate row positions = count-ink bands near the geometric row (count ink is
         # bright/reliable). Verify each by its LABEL token; the best-labelled band wins.
-        cands = _count_bands(tn, yc0, calib, win=13, cx=count_x)
+        # The search reach is a FULL line-pitch (not the old fixed ~27px): the HUD reflows
+        # non-rigidly (~12% of frames -- a row appears/disappears so rows below it slide by up
+        # to a line-pitch while the global block shift fits the majority), and the measured
+        # per-row residual tail reaches ~34px, beyond the old window. Widening lets a reflowed
+        # row snap to its OWN anchor; the nearest-row claim guard below + label verification
+        # stop the wider search from grabbing a neighbouring row's band.
+        band_win = max(13, int(calib.line_pitch))
+        cands = _count_bands(tn, yc0, calib, win=band_win, cx=count_x)
         # Drop bands that belong to a neighbouring row: a band claimed by THIS weapon must be
         # closer to its own row than to any other weapon's row (within a half-pitch tolerance).
         own = []
@@ -739,10 +746,17 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
             if s > best_s:
                 best_s, best_cy = s, cy
         if best_cy is None:
-            # no count band found: fall back to a label-only search (faint counts)
-            for dy in range(-8, 9):
+            # no count band found: fall back to a label-only search (faint counts). Scan a full
+            # line-pitch so a reflowed row whose count ink is washed out is still located by its
+            # label alone; this weapon's own label template won't match a neighbour's label, and
+            # the nearest-row claim is enforced so the pick stays on this row.
+            lab_reach = max(8, int(calib.line_pitch))
+            for dy in range(-lab_reach, lab_reach + 1):
                 yc = yc0 + dy
                 if yc < calib.row_h or yc > Hh - calib.row_h:
+                    continue
+                nearest = min(row_ys, key=lambda w: abs(row_ys[w] - yc))
+                if nearest != wp and abs(dy) > claim_tol:
                     continue
                 s = _label_score_at(tn, wp, yc, calib, dys=(0,))
                 if s > best_s:
