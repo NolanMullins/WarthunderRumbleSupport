@@ -83,8 +83,12 @@ class _FakeDevice:
 def test_engine_emits_via_set_level():
     dev = _FakeDevice()
     eng = EffectsEngine(dev)
-    eng.play("flare")          # shortest effect (single 45 ms segment)
-    time.sleep(0.2)            # let the one-shot thread finish
+    eng.play("flare")          # shortest effect (single 45 ms segment), runs on a daemon thread
+    # Wait (bounded) for the one-shot thread to finish instead of a fixed sleep, so this is not
+    # flaky on a slow/loaded machine.
+    deadline = time.time() + 5.0
+    while time.time() < deadline and (not dev.levels or dev.levels[-1] != 0):
+        time.sleep(0.01)
     assert 160 in dev.levels   # the flare level was emitted
     assert dev.levels[-1] == 0  # motor left quiet at the end
 

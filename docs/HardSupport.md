@@ -6,8 +6,8 @@ controller is mostly about writing one backend class.
 
 ## What a device has to provide
 
-Every backend implements the `HapticDevice` interface in
-`src/winwinghaptics/hardware/base.py`:
+Every backend subclasses `HapticDevice` (`src/winwinghaptics/hardware/base.py`) and implements
+these abstract members:
 
 | Method / property | Job |
 |---|---|
@@ -18,11 +18,15 @@ Every backend implements the `HapticDevice` interface in
 | `arm()` | Send the keep-alive / arm packet (return `True`; make it a no-op if the device doesn't need one) |
 | `set_level(level)` | Set vibration from a normalized `0.0`-`1.0` value |
 
+The base class also PROVIDES (you don't implement these) `start_keepalive()` and
+`keepalive(now=None)`: the engine's heartbeat loop calls them and they re-arm on your
+`Capabilities.heartbeat_interval`, so you never write a heartbeat loop. Override them only for
+unusual keep-alive needs.
+
 The effects engine drives every device through `set_level(0.0-1.0)`, so that's the method that
 matters. The Winwing backend (`hardware/winwing.py`) also keeps a native `vib(0..255)` helper and
 has `set_level()` scale into it; that's a convenient pattern for any single-motor device, but it's
-optional. Keep-alive timing is owned by the device: the base class's `start_keepalive()` /
-`keepalive()` re-arm on your `Capabilities.heartbeat_interval`, so you don't write a heartbeat loop.
+optional.
 
 ## Steps
 

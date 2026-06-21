@@ -45,11 +45,14 @@ range in `set_level()`. The engine never emits native values. (The Winwing maps 
 An effect is a **descriptor**, not a level stream. A renderer plays it:
 
 - **Streaming devices** (Winwing): the renderer ticks `set_level` over the descriptor's
-  timeline, exactly like the original engine loop.
-- **Pattern / effect devices**: the renderer uploads the whole descriptor once and the *device*
-  owns timing. The engine must not assume it drives the clock.
+  timeline, exactly like the original engine loop. This is the default (`StreamingRenderer`).
+- **Pattern / effect devices**: the device supplies its own renderer (via `make_renderer()`) that
+  uploads the whole descriptor once and owns timing. The engine must not assume it drives the
+  clock.
 
-So the device contract is `play(effect)` + `stop()`, not `vib(level)`.
+As landed, the device transport contract is still `set_level(0.0-1.0)` (+ `arm`/`open`/`close`);
+the renderer is the thing that "plays an effect" over that. A future `play(effect)` / `stop()`
+device-level contract is the direction for richer pattern devices, but is not implemented yet.
 
 ### 3. Capability negotiation with graceful degradation
 Effects are authored at the richest level (channels, frequency, sharpness). Each device
@@ -58,9 +61,10 @@ channels to one and ignores frequency; a dual-rumble pad maps roles to motors; a
 frequency. One effect definition, many faithful renderings, no per-device effect tables.
 
 ### 4. Device-owned keep-alive
-The 2.5s arm heartbeat is Winwing-specific. Timing moves into the device, started on `open()`
-and driven by `Capabilities.needs_heartbeat` / `heartbeat_interval`. Devices that don't need it
-make it a no-op instead of carrying dead engine code.
+The 2.5s arm heartbeat is Winwing-specific. Timing moves into the device via
+`start_keepalive()` / `keepalive()`, driven by `Capabilities.needs_heartbeat` /
+`heartbeat_interval`. The engine's heartbeat loop calls these (it no longer hardcodes the
+cadence); devices that don't need a heartbeat make them a no-op.
 
 ### 5. Capability-driven arbitration
 The gun-vs-one-shot priority stomp exists because there is one motor. Devices with multiple
@@ -70,9 +74,10 @@ available, else the `priority` fallback.
 
 ### 6. Device registry + discovery
 Replace the hardcoded `Stick()` in the controller with a registry. Each backend registers a
-`probe()` (VID / usage scan, SDK presence, ...). The controller enumerates registered backends,
-opens the first that probes successfully, and exposes selection in the UI. Adding hardware
-becomes "drop in a module and register it", never an edit to the controller.
+`probe()` (VID / usage scan, SDK presence, ...). The controller selects the first backend that
+probes successfully via `select_device()`. Adding hardware becomes "drop in a module and register
+it", never an edit to the controller. (A UI device-picker is a possible future addition but is not
+implemented.)
 
 ## Migration order
 
