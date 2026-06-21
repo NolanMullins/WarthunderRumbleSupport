@@ -1,0 +1,83 @@
+"""Tests for the effects engine + normalized library.
+
+The engine now drives devices through the normalized set_level(0.0-1.0) interface instead of the
+legacy native vib(0-255). These tests pin that the normalized library round-trips to the ORIGINAL
+native 0-255 envelope exactly (so felt output on the Winwing is unchanged), and that the engine
+emits via set_level.
+"""
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
+from winwinghaptics.effects import library                 # noqa: E402
+from winwinghaptics.effects.engine import EffectsEngine    # noqa: E402
+from winwinghaptics.hardware import WinwingUrsaMinor        # noqa: E402
+
+
+# The original hardcoded native 0-255 envelopes (pre-normalization), as the byte-identical
+# contract the normalized library must reproduce through a 0-255 device mapping.
+EXPECTED_NATIVE = {
+    "missile": [255, 0, 255, 0, 190, 0, 140, 0, 90, 0, 50],
+    "rocket":  [255, 0, 210, 0, 140],
+    "bomb":    [255, 120],
+    "flare":   [160],
+    "kill":    [255, 0, 255],
+    "hit":     [200, 0, 150],
+    "death":   [255] + list(range(255, 0, -10)),
+}
+
+
+def _to_native(level):
+    """Map a normalized 0.0-1.0 level the way a 0-255 device does (matches set_level)."""
+    return round(max(0.0, min(1.0, level)) * 255)
+
+
+def test_every_effect_round_trips_to_original_native():
+    for name, expected in EXPECTED_NATIVE.items():
+        natives = [_to_native(level) for level, _ms in library.EFFECTS[name]["segments"]]
+        assert natives == expected, name
+
+
+def test_durations_unchanged():
+    # the normalization touched levels only, never timings
+    assert [ms for _l, ms in library.EFFECTS["missile"]["segments"]] == \
+        [360, 40, 70, 30, 55, 35, 50, 40, 45, 45, 40]
+
+
+def test_gun_level_maps_to_135():
+    assert _to_native(library.GUN_LEVEL) == 135
+
+
+def test_device_set_level_matches_mapping():
+    d = WinwingUrsaMinor()
+    # Capture the native 0-255 value set_level passes to the device's vib() so this guards the
+    # real WinwingUrsaMinor mapping (round(clamp(level)*255)), not just the local helper.
+    seen = []
+    d.vib = lambda native: seen.append(native)
+    for level in (0.0, 5 / 255, library.GUN_LEVEL, 245 / 255, 1.0):
+        d.set_level(level)
+    assert seen == [0, 5, 135, 245, 255]
+
+
+class _FakeDevice:
+    """Records the native levels written, so we can assert the engine emits via set_level."""
+    def __init__(self):
+        self.levels = []
+
+    def set_level(self, level):
+        self.levels.append(_to_native(level))
+        return True
+
+    def arm(self):
+        return True
+
+
+def test_engine_emits_via_set_level():
+    dev = _FakeDevice()
+    eng = EffectsEngine(dev)
+    eng.play("flare")          # shortest effect (single 45 ms segment)
+    time.sleep(0.2)            # let the one-shot thread finish
+    assert 160 in dev.levels   # the flare level was emitted
+    assert dev.levels[-1] == 0  # motor left quiet at the end

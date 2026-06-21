@@ -6,19 +6,20 @@ PRIORITY of the motor while playing, so their strong envelope is never stomped b
 rumble; when a one-shot ends, the gun rumble resumes if the trigger is still held.
 
 Behavior is a faithful transcription of the original Effects class: same heartbeat cadence,
-same priority arbitration, same per-effect timing (now sourced from effects.library), and the
-same native 0-255 output via device.vib(). (Normalized set_level() exists on the device for a
-future migration but is intentionally not used here to keep felt output byte-identical.)
+same priority arbitration, same per-effect timing (sourced from effects.library). Output is now
+device-independent: the engine drives the device via the normalized set_level(0.0-1.0) interface
+(not the legacy native vib()), so any HapticDevice backend works. On the Winwing the normalized
+levels map back to the original 0-255 values exactly, so felt output is unchanged.
 """
 import threading
 import time
 
-from .library import EFFECTS
+from .library import EFFECTS, GUN_LEVEL
 
 
 class EffectsEngine:
     def __init__(self, device, logfn=lambda s: None):
-        self.stick = device                # a HapticDevice (Winwing); .vib()/.arm() native
+        self.stick = device                # a HapticDevice; driven via set_level(0.0-1.0)
         self.log = logfn
         self._stop = threading.Event()
         self._hb = None
@@ -39,7 +40,7 @@ class EffectsEngine:
     def stop(self):
         self._stop.set()
         try:
-            self.stick.vib(0)
+            self.stick.set_level(0.0)
         except Exception:
             pass
 
@@ -61,10 +62,10 @@ class EffectsEngine:
             if self._priority:
                 pass                                   # one-shot owns the motor
             elif now < self._gun_until:
-                self.stick.vib(135)
+                self.stick.set_level(GUN_LEVEL)
                 self._gun_on = True
             elif self._gun_on:
-                self.stick.vib(0)
+                self.stick.set_level(0.0)
                 self._gun_on = False
             time.sleep(0.05)
 
@@ -76,7 +77,7 @@ class EffectsEngine:
     def _hold(self, level, ms):
         end = time.time() + ms / 1000.0
         while time.time() < end and not self._stop.is_set():
-            self.stick.vib(level)
+            self.stick.set_level(level)
             time.sleep(0.003)
 
     def _run_oneshot(self, fn):
@@ -86,7 +87,7 @@ class EffectsEngine:
                 try:
                     fn()
                 finally:
-                    self.stick.vib(0)          # leave the motor quiet for the heartbeat
+                    self.stick.set_level(0.0)  # leave the motor quiet for the heartbeat
                     self._priority = False     # gun rumble resumes if trigger still held
         threading.Thread(target=wrap, daemon=True).start()
 
@@ -102,7 +103,7 @@ class EffectsEngine:
         def seq():
             for level, ms in segments:
                 self._hold(level, ms)
-            self.stick.vib(0)
+            self.stick.set_level(0.0)
         self._run_oneshot(seq)
 
     # --- named convenience triggers (kept for the existing call sites) ---
