@@ -6,3 +6,4 @@ these and translate them into Events still live in the GUI app for now; they mov
 SignalSource interface alongside the UI/controller decomposition.
 """
 from .telemetry_client import WarThunder   # noqa: F401
+from . import process                       # noqa: F401

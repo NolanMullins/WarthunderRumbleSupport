@@ -556,7 +556,19 @@ def run_gui(app_file):
 
     def refresh():
         set_stat(stick_dot, stick_val, stick_icn, state["stick_ok"], "connected", "not found")
-        set_stat(game_dot, game_val, game_icn, state["game_ok"], "in match", "waiting")
+        # War Thunder: three states -- in a match (green), open but in menu/hangar (amber-ish),
+        # or closed (idle). wt_open is process/server presence; game_ok is actively flying.
+        if state["game_ok"]:
+            set_stat(game_dot, game_val, game_icn, True, "in match", "waiting")
+        elif state.get("wt_open"):
+            game_val.configure(text="in menu", fg=C["text"])
+            try:
+                game_dot.configure(image=ic(game_icn, C["accent"], theme.ICON["status"]))
+                game_dot.image = ic(game_icn, C["accent"], theme.ICON["status"])
+            except Exception:
+                pass
+        else:
+            set_stat(game_dot, game_val, game_icn, False, "in match", "closed")
         try:
             dev_state_lbl.config(
                 text="connected · USB HID" if state["stick_ok"] else "searching…",
@@ -594,7 +606,7 @@ def run_gui(app_file):
     def on_close():
         ctrl.shutdown(); root.destroy()
     root.protocol("WM_DELETE_WINDOW", on_close)
-    log("Ready. Enable HUD auto-detect on the Device tab — it learns your HUD automatically.")
+    log("Ready. HUD auto-detect is on — it learns your HUD automatically when War Thunder is open.")
     root.mainloop()
 
 

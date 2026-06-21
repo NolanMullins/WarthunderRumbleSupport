@@ -1,13 +1,13 @@
 {
-  "detector_hash": "7f85d5db852d",
+  "detector_hash": "e146ff2fc28c",
   "aggregate": {
     "present_cells": 10449,
-    "missed_row": 418,
-    "missed_row_rate": 0.040003828117523205,
+    "missed_row": 400,
+    "missed_row_rate": 0.03828117523207963,
     "false_row": 1,
-    "scored_value_cells": 10031,
-    "misread": 156,
-    "misread_rate": 0.01555178945269664,
+    "scored_value_cells": 10049,
+    "misread": 152,
+    "misread_rate": 0.01512588317245497,
     "events": 90,
     "hits": 85,
     "misses": 5,
@@ -19,32 +19,32 @@
   },
   "per_recording": {
     "hud_rec_20260618_101336/hud_rec_20260618_101336": {
-      "missed_row_rate": 0.0020833333333333333,
-      "misread_rate": 0.027835768963117607,
+      "missed_row_rate": 0.003472222222222222,
+      "misread_rate": 0.0264808362369338,
       "event_miss_rate": 0.0,
       "event_false_fires": 4,
       "false_episodes": 2,
       "false_episode_rate": 0.08695652173913043
     },
     "hud_rec_20260618_111503/hud_rec_20260618_111503": {
-      "missed_row_rate": 0.10306406685236769,
-      "misread_rate": 0.005434782608695652,
+      "missed_row_rate": 0.10376044568245125,
+      "misread_rate": 0.005439005439005439,
       "event_miss_rate": 0.0,
       "event_false_fires": 0,
       "false_episodes": 0,
       "false_episode_rate": 0.0
     },
     "hud_rec_20260618_140000/hud_rec_20260618_140000": {
-      "missed_row_rate": 0.01903419104688051,
-      "misread_rate": 0.01437297879985627,
+      "missed_row_rate": 0.01691928093056045,
+      "misread_rate": 0.016493366798135532,
       "event_miss_rate": 0.07692307692307693,
       "event_false_fires": 3,
       "false_episodes": 1,
       "false_episode_rate": 0.038461538461538464
     },
     "hud_rec_20260618_153642/hud_rec_20260618_153552": {
-      "missed_row_rate": 0.09013605442176871,
-      "misread_rate": 0.02850467289719626,
+      "missed_row_rate": 0.08375850340136054,
+      "misread_rate": 0.02459396751740139,
       "event_miss_rate": 0.10344827586206896,
       "event_false_fires": 3,
       "false_episodes": 0,
