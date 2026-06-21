@@ -87,10 +87,29 @@ def run_gui(app_file):
     _HUD = ctrl.hud_available
 
     root = tk.Tk()
-    root.title("Winwing Haptics")
+    root.title("WT Haptics")
     root.geometry("452x760")
     root.minsize(452, 720)
     root.configure(bg=C["bg_base"])
+
+    # Window + taskbar icon. The .ico drives the title-bar and taskbar on Windows; the PNG is a
+    # cross-version fallback via iconphoto. Setting an explicit AppUserModelID makes Windows group
+    # the app under -- and show -- OUR icon in the taskbar instead of the generic python host icon.
+    _assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("WTHaptics.App")
+    except Exception:
+        pass
+    try:
+        root.iconbitmap(default=os.path.join(_assets, "wt_haptics.ico"))
+    except Exception:
+        pass
+    try:
+        _icon_img = tk.PhotoImage(file=os.path.join(_assets, "wt_haptics.png"))
+        root.iconphoto(True, _icon_img)
+        root._wt_icon_ref = _icon_img            # keep a reference so Tk doesn't GC the image
+    except Exception:
+        pass
 
     icons = IconLoader(root)
 
@@ -118,7 +137,7 @@ def run_gui(app_file):
     bar = tk.Frame(header, bg=C["accent"], width=3, height=30)
     bar.pack(side="left", padx=(0, 9)); bar.pack_propagate(False)
     htext = tk.Frame(header, bg=C["bg_base"]); htext.pack(side="left")
-    tk.Label(htext, text="Winwing Haptics", bg=C["bg_base"], fg=C["text"],
+    tk.Label(htext, text="WT Haptics", bg=C["bg_base"], fg=C["text"],
              font=f_title).pack(anchor="w")
     tk.Label(htext, text=f"War Thunder → controller rumble · v{__version__}", bg=C["bg_base"],
              fg=C["text_muted"], font=f_sub).pack(anchor="w")
@@ -633,7 +652,7 @@ def run_gui_safe(app_file=None):
             base = os.getcwd()
         try:
             with open(os.path.join(base, "crash_log.txt"), "w", encoding="utf-8") as fh:
-                fh.write("WinwingHaptics crash:\n\n" + tb)
+                fh.write("WT Haptics crash:\n\n" + tb)
         except Exception:
             pass
         try:
@@ -641,7 +660,7 @@ def run_gui_safe(app_file=None):
             from tkinter import messagebox
             r = tk.Tk(); r.withdraw()
             messagebox.showerror(
-                "Winwing Haptics — startup error",
+                "WT Haptics — startup error",
                 "The app hit an error and had to stop.\n\n"
                 "A crash_log.txt was written next to the app. Please send it.\n\n"
                 + tb.strip().splitlines()[-1])

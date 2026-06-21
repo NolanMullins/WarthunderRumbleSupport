@@ -1,4 +1,4 @@
-"""WinwingHaptics — War Thunder haptic-feedback bridge for the Winwing Ursa Minor Fighter.
+"""WT Haptics — War Thunder haptic-feedback bridge for the Winwing Ursa Minor Fighter joystick.
 
 Package layout (refactor in progress):
   detection/   HUD weapon-counter detector (read_counts, TemporalTracker, calibration)

@@ -40,7 +40,7 @@ def _report_crash():
         base = os.getcwd()
     try:
         with open(os.path.join(base, "crash_log.txt"), "w", encoding="utf-8") as fh:
-            fh.write("WinwingHaptics crash:\n\n" + tb)
+            fh.write("WT Haptics crash:\n\n" + tb)
     except Exception:
         pass
     try:
@@ -48,7 +48,7 @@ def _report_crash():
         from tkinter import messagebox
         r = tk.Tk(); r.withdraw()
         messagebox.showerror(
-            "Winwing Haptics — startup error",
+            "WT Haptics — startup error",
             "The app hit an error and had to stop.\n\n"
             "A crash_log.txt was written next to the app. Please send it.\n\n"
             + (tb.strip().splitlines()[-1] if tb.strip() else ""))

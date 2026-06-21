@@ -1,4 +1,4 @@
-"""Thin launcher for WinwingHaptics.
+"""Thin launcher for WT Haptics.
 
 Adds src/ to the path and delegates to the entry-point shim, preserving its CLI flags.
 
