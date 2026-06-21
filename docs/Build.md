@@ -17,6 +17,7 @@ python -m pip install pyinstaller
 ```powershell
 python -m PyInstaller --onedir --noconsole --name WinwingHaptics ^
   --distpath dist_final --workpath build --specpath build ^
+  --paths src ^
   --collect-all winsdk --collect-submodules winwinghaptics --collect-submodules numpy ^
   --collect-data winwinghaptics ^
   run.py
@@ -25,7 +26,11 @@ python -m PyInstaller --onedir --noconsole --name WinwingHaptics ^
 The `--collect-*` flags matter: `winsdk` is needed for the Windows OCR used during HUD
 calibration, the package / numpy submodules have to be pulled in explicitly, and
 `--collect-data winwinghaptics` bundles the package's data files — the vendored Lucide UI icons
-under `ui/assets/` (without it the icons silently fall back to blank). Build from a checkout that
+under `ui/assets/` (without it the icons silently fall back to blank). `--paths src` is
+REQUIRED: `run.py` adds `src/` to `sys.path` at runtime and imports the top-level
+`winwing_haptics` entry-point shim, which PyInstaller's static analysis cannot see through —
+without this flag the shim is left out of the bundle and the frozen exe crashes at launch with
+`ModuleNotFoundError: No module named 'winwing_haptics'`. Build from a checkout that
 matches the version you intend to ship (see Releases below).
 
 ## Smoke test
