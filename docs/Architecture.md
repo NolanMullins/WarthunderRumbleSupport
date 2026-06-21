@@ -94,3 +94,21 @@ engine rewrite.
 
 Refactor in progress on `hardware-abstraction-refactor`. This document is the plan of record;
 update it as phases land.
+
+Landed:
+
+- **Phase 1 - normalized engine.** The engine drives devices via `set_level(0.0-1.0)`; the
+  library is authored normalized and round-trips to the original 0-255 envelope exactly.
+- **Phase 2 - effect descriptors + renderer.** Effects are `Effect`/`Segment` descriptors
+  (`effects/model.py`); a renderer plays them (`effects/renderer.py`). `StreamingRenderer` is
+  the default host-timed playback; `renderer_for()` lets a device supply its own.
+- **Phase 3 - device-owned keep-alive.** `HapticDevice.start_keepalive()` / `keepalive()`,
+  driven by `Capabilities`. The engine no longer hardcodes the 2.5s arm cadence.
+- **Phase 4 - device registry.** `hardware/registry.py`: backends register and expose
+  `probe()`; the controller calls `select_device()` instead of hardcoding the Winwing.
+
+Still open:
+
+- **Capability negotiation + mixing** (#3, #5): multi-channel roles, frequency/sharpness, and
+  `mix`-vs-`priority` arbitration. These land when the first multi-channel device is added; the
+  `Channel` role and `Segment.frequency` field already exist as the seam for it.
