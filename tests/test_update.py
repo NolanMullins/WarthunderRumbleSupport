@@ -138,6 +138,27 @@ def test_helper_script_contains_key_fields(tmp_path):
     assert "goto waitloop" in script
 
 
+def test_helper_script_preserves_user_data():
+    # the swap must NOT use /MIR (which purges user config/calibration/recordings next to the exe),
+    # and must exclude the settings files from being overwritten
+    up = WindowsUpdater(app_dir="C:/app", exe_path="C:/app/WinwingHaptics.exe")
+    script = up._helper_script("C:/staged/WinwingHaptics", "C:/staged")
+    assert "/MIR" not in script
+    assert "/E " in script
+    assert "winwing_haptics.json" in script
+    assert "hud_calib.json" in script
+
+
+def test_build_root_none_when_no_exe(tmp_path):
+    # extracted contents without the app exe -> no build root (caller must abort, not guess)
+    staging = tmp_path / "staged"
+    (staging / "random").mkdir(parents=True)
+    (staging / "random" / "notes.txt").write_text("hi")
+    up = WindowsUpdater(app_dir=str(tmp_path / "app"),
+                        exe_path=str(tmp_path / "app" / "WinwingHaptics.exe"))
+    assert up._build_root(str(staging)) is None
+
+
 def test_stage_extracts_and_finds_nested_build_root(tmp_path):
     # build a zip with the exe nested under a top folder (as PyInstaller --onedir zips often are)
     build = tmp_path / "WinwingHaptics"

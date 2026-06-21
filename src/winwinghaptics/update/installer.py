@@ -15,12 +15,13 @@ unit-testable; the swap is delegated to the OS helper so the app can exit cleanl
 """
 import os
 import sys
-import time
 import shutil
 import zipfile
 import tempfile
 import subprocess
 import urllib.request
+
+from ..config import CONFIG_NAME, HUD_CALIB_NAME   # user-data filenames to protect during a swap
 
 
 def is_frozen():
@@ -76,8 +77,9 @@ class WindowsUpdater:
         """Extract the update zip into staging_dir and return the folder that holds the build.
 
         The release zip may contain the build directly OR nested in a single top-level folder
-        (e.g. WinwingHaptics/...); this returns whichever directory actually contains the exe so
-        the swap mirrors the right level."""
+        (e.g. WinwingHaptics/...); this returns whichever directory actually contains the exe, or
+        None if the extracted contents don't look like the app build (no exe) -- so a malformed or
+        wrong asset can't be swapped over the install."""
         if os.path.isdir(staging_dir):
             shutil.rmtree(staging_dir, ignore_errors=True)
         os.makedirs(staging_dir, exist_ok=True)
@@ -86,27 +88,34 @@ class WindowsUpdater:
         return self._build_root(staging_dir)
 
     def _build_root(self, staging_dir):
-        """Find the directory inside staging that contains the app exe (handles a nested top folder)."""
+        """Find the directory inside staging that contains the app exe (handles a nested top folder).
+        Returns None when the expected exe is nowhere to be found -- the caller MUST treat that as a
+        failed/invalid download and NOT swap, rather than guessing a root and overwriting the install."""
         exe_name = os.path.basename(self.exe_path)
-        # exe at the top level?
         if os.path.exists(os.path.join(staging_dir, exe_name)):
             return staging_dir
-        # single nested folder containing it?
         entries = [os.path.join(staging_dir, e) for e in os.listdir(staging_dir)]
         dirs = [d for d in entries if os.path.isdir(d)]
         for d in dirs:
             if os.path.exists(os.path.join(d, exe_name)):
                 return d
-        # fall back: if exactly one top-level dir, use it; else staging itself
-        return dirs[0] if len(dirs) == 1 else staging_dir
+        return None
 
     # ---- helper script ----
-    def _helper_script(self, build_root, staging_dir):
-        """Generate the .bat that waits for this PID, mirrors build_root over app_dir, relaunches,
-        and cleans up. Robocopy /MIR mirrors (incl. deletions); exit codes < 8 are success."""
+    def _helper_script(self, build_root, staging_dir, log_path=None):
+        """Generate the .bat that waits for this PID, copies build_root over app_dir, relaunches,
+        and cleans up.
+
+        Uses robocopy /E (copy the new build, overwriting changed files) NOT /MIR: /MIR PURGES
+        destination files absent from the source, which would delete the user's config, calibration
+        and recordings that live next to the exe in a frozen build. /XF also protects the user's
+        settings files from being overwritten by anything a release archive might accidentally carry.
+        Robocopy exit codes < 8 are success. The log is written to the temp work dir, never into the
+        app dir (so it isn't left behind in the install)."""
         pid = os.getpid()
         exe = self.exe_path
-        log = os.path.join(self.app_dir, "update_log.txt")
+        log = log_path or os.path.join(os.path.dirname(staging_dir), "update_log.txt")
+        excl_files = " ".join('"%s"' % n for n in (CONFIG_NAME, HUD_CALIB_NAME))
         return (
             "@echo off\r\n"
             "setlocal\r\n"
@@ -123,7 +132,8 @@ class WindowsUpdater:
             "  timeout /t 1 /nobreak >NUL\r\n"
             "  goto waitloop\r\n"
             ")\r\n"
-            'robocopy "%SRC%" "%DST%" /MIR /R:3 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1\r\n'
+            f'robocopy "%SRC%" "%DST%" /E /XF {excl_files} /R:3 /W:2 /NFL /NDL /NJH /NJS /NP '
+            '>> "%LOG%" 2>&1\r\n'
             "if errorlevel 8 (\r\n"
             '  echo robocopy failed, aborting relaunch >> "%LOG%"\r\n'
             ") else (\r\n"
@@ -149,21 +159,28 @@ class WindowsUpdater:
     def update(self, info, on_progress=None, work_dir=None, _exit=None):
         """Download `info` (an UpdateInfo with an asset_url), stage it, and launch the swap helper.
 
-        Returns without exiting if it could not proceed (no asset, unsupported, error); on success
-        it calls `_exit` (default sys.exit(0)) so the locked files are released for the helper.
+        Aborts (returns False, no swap) if unsupported, there's no asset, the download/extract fails,
+        or the staged contents don't contain the app exe (a malformed/wrong asset). On success it
+        calls `_exit` (default sys.exit(0)) so the locked files are released for the helper.
         """
         if not self.is_supported():
             return False
         if not info or not info.asset_url:
             return False
-        work_dir = work_dir or os.path.join(tempfile.gettempdir(),
-                                             f"winwinghaptics_update_{int(time.time())}")
+        # Unique work dir per attempt so concurrent/retried updates can't collide on the same paths.
+        work_dir = work_dir or tempfile.mkdtemp(prefix="winwinghaptics_update_")
         os.makedirs(work_dir, exist_ok=True)
         zip_path = os.path.join(work_dir, info.asset_name or "update.zip")
         staging_dir = os.path.join(work_dir, "staged")
         try:
             self.download(info.asset_url, zip_path, on_progress=on_progress)
             build_root = self.stage(zip_path, staging_dir)
+            # Guard: only swap if the staged build actually contains our exe. Otherwise a corrupt or
+            # wrong .zip would be copied over the install.
+            exe_name = os.path.basename(self.exe_path)
+            if not build_root or not os.path.exists(os.path.join(build_root, exe_name)):
+                shutil.rmtree(work_dir, ignore_errors=True)
+                return False
             helper = self._write_helper(build_root, staging_dir,
                                         os.path.join(work_dir, "apply_update.bat"))
             self._launch_helper(helper)

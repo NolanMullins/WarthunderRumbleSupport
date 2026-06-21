@@ -151,7 +151,7 @@ def run_gui(app_file):
         """Apply the available update: self-replace+relaunch on a frozen Windows build, else open
         the Releases page so the user can download it."""
         info = update_state["info"]
-        if not info:
+        if not info or update_state["busy"]:
             return
         if _updater.is_supported() and info.asset_url:
             update_state["busy"] = True
