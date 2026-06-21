@@ -20,7 +20,7 @@ from ..app import AppController
 from . import theme
 from . import effectspec
 from .icons import IconLoader
-from .widgets import ToggleSwitch, RoundedButton, RoundedFrame, RoundedTile
+from .widgets import ToggleSwitch, RoundedButton, RoundedFrame, RoundedTile, ScrollFrame
 
 C = theme.COLOR
 
@@ -159,7 +159,7 @@ def run_gui(app_file):
             lbl.master.configure(bg=(C["accent"] if on else C["bg_base"]))
         current["name"] = name
 
-    def add_tab(name, icon_name):
+    def add_tab(name, icon_name, scroll=True):
         wrap = tk.Frame(tabbar, bg=C["bg_base"])
         wrap.pack(side="left", padx=(0, 2))
         marker = tk.Frame(wrap, bg=C["bg_base"], height=2); marker.pack(side="bottom", fill="x")
@@ -172,11 +172,17 @@ def run_gui(app_file):
         tabs[name] = (lbl, icon_name)
         page = tk.Frame(content, bg=C["bg_base"])
         pages[name] = page
+        # scrollable tabs return their inner frame so tall content (the effects list / device
+        # settings) scrolls instead of being clipped by the window height.
+        if scroll:
+            sf = ScrollFrame(page, bg=C["bg_base"])
+            sf.pack(fill="both", expand=True)
+            return sf.inner
         return page
 
     page_effects = add_tab("Effects", "zap")
     page_device = add_tab("Device", "joystick")
-    page_activity = add_tab("Activity", "scroll-text")
+    page_activity = add_tab("Activity", "scroll-text", scroll=False)
 
     # ============== EFFECTS TAB ==============
     enable_vars = {}

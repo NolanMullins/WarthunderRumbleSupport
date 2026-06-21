@@ -62,6 +62,41 @@ class RoundedFrame(tk.Frame):
         self._bg.lower()
 
 
+class ScrollFrame(tk.Frame):
+    """A vertically scrollable container. Pack content into `.inner`.
+
+    A Canvas hosts an embedded `inner` frame; a slim scrollbar appears and the mouse wheel scrolls
+    while the pointer is over the area. The inner frame is kept exactly as wide as the canvas so
+    children using fill="x" lay out normally and only vertical overflow scrolls.
+    """
+    def __init__(self, parent, bg=None):
+        self.bgc = bg or C["bg_base"]
+        super().__init__(parent, bg=self.bgc)
+        self._cv = tk.Canvas(self, bg=self.bgc, highlightthickness=0, bd=0)
+        self._sb = tk.Scrollbar(self, orient="vertical", command=self._cv.yview, width=8)
+        self._cv.configure(yscrollcommand=self._on_scroll)
+        self._cv.pack(side="left", fill="both", expand=True)
+        self.inner = tk.Frame(self._cv, bg=self.bgc)
+        self._win = self._cv.create_window(0, 0, anchor="nw", window=self.inner)
+        self.inner.bind("<Configure>",
+                        lambda _e: self._cv.configure(scrollregion=self._cv.bbox("all")))
+        self._cv.bind("<Configure>", lambda e: self._cv.itemconfigure(self._win, width=e.width))
+        # wheel scrolling only while the pointer is over this area
+        self._cv.bind("<Enter>", lambda _e: self._cv.bind_all("<MouseWheel>", self._wheel))
+        self._cv.bind("<Leave>", lambda _e: self._cv.unbind_all("<MouseWheel>"))
+
+    def _on_scroll(self, lo, hi):
+        # show the scrollbar only when content overflows
+        if float(lo) <= 0.0 and float(hi) >= 1.0:
+            self._sb.pack_forget()
+        else:
+            self._sb.pack(side="right", fill="y")
+        self._sb.set(lo, hi)
+
+    def _wheel(self, e):
+        self._cv.yview_scroll(int(-e.delta / 120), "units")
+
+
 class RoundedTile(tk.Canvas):
     """A small rounded square holding a centered icon image (the per-row icon tile)."""
     def __init__(self, parent, image, size=32, radius=8, fill=None, bg=None):
@@ -84,19 +119,23 @@ class RoundedTile(tk.Canvas):
             self.itemconfig(self._img_id, image=image)
 
 
-class ToggleSwitch(tk.Canvas):
+class ToggleSwitch(tk.Label):
     """A Fluent-style on/off switch backed by a tk.BooleanVar.
 
-    on_toggle(value) is called (if given) after the user flips it. Reads/writes `variable` so the
-    rest of the app can bind to it like any checkbox."""
-    W, H = 38, 22
+    Rendered as an anti-aliased PIL image (a clean pill track + circular knob) so it matches the
+    rounded cards and avoids the gaps a smoothed-polygon canvas track leaves. on_toggle(value) is
+    called (if given) after the user flips it; reads/writes `variable` like any checkbox."""
+    W, H = 40, 22
     PAD = 3
+    SS = 3      # supersample factor for anti-aliasing
 
     def __init__(self, parent, variable, on_toggle=None, bg=None):
-        super().__init__(parent, width=self.W, height=self.H, highlightthickness=0,
-                         bg=bg or C["bg_card"], cursor="hand2", bd=0)
+        self._bg = bg or C["bg_card"]
+        super().__init__(parent, image=None, bg=self._bg, bd=0, highlightthickness=0,
+                         cursor="hand2")
         self.var = variable
         self._on_toggle = on_toggle
+        self._imgs = {}
         self.bind("<Button-1>", self._click)
         self._redraw()
 
@@ -109,16 +148,33 @@ class ToggleSwitch(tk.Canvas):
     def refresh(self):
         self._redraw()
 
-    def _redraw(self):
-        self.delete("all")
-        on = bool(self.var.get())
+    def _image_for(self, on):
+        if on in self._imgs:
+            return self._imgs[on]
+        s = self.SS
+        W, H, PAD = self.W * s, self.H * s, self.PAD * s
+        from PIL import Image, ImageDraw, ImageTk
+        img = Image.new("RGBA", (W, H), self._hex_rgba(self._bg))
+        d = ImageDraw.Draw(img)
         track = C["accent"] if on else C["stroke_strong"]
-        _round_poly(self, 1, 1, self.W - 1, self.H - 1, (self.H - 2) // 2,
-                    fill=track, outline="")
-        d = self.H - 2 * self.PAD
-        x = (self.W - self.PAD - d) if on else self.PAD
+        d.rounded_rectangle([0, 0, W - 1, H - 1], radius=H // 2, fill=track)
+        dia = H - 2 * PAD
+        x = (W - PAD - dia) if on else PAD
         knob = "#ffffff" if on else "#c7ced6"
-        self.create_oval(x, self.PAD, x + d, self.PAD + d, fill=knob, outline="")
+        d.ellipse([x, PAD, x + dia, PAD + dia], fill=knob)
+        img = img.resize((self.W, self.H), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        self._imgs[on] = photo
+        return photo
+
+    @staticmethod
+    def _hex_rgba(h):
+        h = h.lstrip("#")
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+
+    def _redraw(self):
+        photo = self._image_for(bool(self.var.get()))
+        self.configure(image=photo)
 
 
 class RoundedButton(tk.Canvas):
