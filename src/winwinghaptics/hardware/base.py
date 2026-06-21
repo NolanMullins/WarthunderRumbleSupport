@@ -53,10 +53,12 @@ class HapticDevice(abc.ABC):
     # based on its Capabilities, so the heartbeat interval is no longer hardcoded in the engine.
     # Devices that don't need a heartbeat (needs_heartbeat=False) make these no-ops.
     def start_keepalive(self) -> None:
-        """Arm now and reset the heartbeat clock. Called when output starts."""
+        """Arm now and reset the heartbeat clock. Called when output starts. The clock is reset
+        even if arm() fails, so a failed initial arm can't make keepalive() re-arm every tick
+        (it retries on the device's heartbeat interval, matching the original cadence)."""
+        self._last_arm = time.time()
         if self.capabilities.needs_heartbeat:
             self.arm()
-        self._last_arm = time.time()
 
     def keepalive(self, now: float = None) -> None:
         """Re-arm if the device's heartbeat interval has elapsed since the last arm."""

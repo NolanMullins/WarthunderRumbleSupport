@@ -112,3 +112,8 @@ Still open:
 - **Capability negotiation + mixing** (#3, #5): multi-channel roles, frequency/sharpness, and
   `mix`-vs-`priority` arbitration. These land when the first multi-channel device is added; the
   `Channel` role and `Segment.frequency` field already exist as the seam for it.
+- **Multi-backend hot-plug.** `select_device()` runs once at controller construction. With a
+  single backend this matches the original retry-open behavior exactly. Once a second backend
+  exists, swapping to a device plugged in later needs re-running detection AND rebinding the
+  effects engine's device reference (it captures the device + renderer at construction), so it's
+  deferred until there's more than one backend to choose between.

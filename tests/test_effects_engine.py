@@ -157,3 +157,18 @@ def test_keepalive_noop_when_not_needed():
     d.start_keepalive()
     d.keepalive(now=10_000.0)
     assert d.arms == 0             # device that doesn't need a heartbeat never arms
+
+
+def test_keepalive_clock_reset_even_if_initial_arm_fails():
+    # If the very first arm() throws, the clock must still be set so keepalive() doesn't then
+    # re-arm every tick (the original engine set last_arm unconditionally).
+    d = _KeepaliveDevice(interval=2.5)
+    d.arm = lambda: (_ for _ in ()).throw(RuntimeError("device gone"))
+    try:
+        d.start_keepalive()
+    except RuntimeError:
+        pass
+    assert d._last_arm != 0.0                       # clock was set before the failed arm
+    d.arm = lambda: setattr(d, "arms", d.arms + 1) or True
+    d.keepalive(now=d._last_arm + 1.0)              # within interval -> must NOT arm
+    assert d.arms == 0
