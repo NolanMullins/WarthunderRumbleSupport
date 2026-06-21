@@ -21,6 +21,7 @@ from ..effects import Effects
 from ..effects import dispatch
 from ..sources import WarThunder
 from ..sources import killfeed
+from ..sources import process as wt_process
 from ..events import EventType
 
 try:
@@ -61,8 +62,9 @@ class AppController:
 
         self.state = {
             "stick_ok": False, "game_ok": False,
+            "wt_open": False,           # War Thunder process/server detected as running
             "last_evt": 0, "last_dmg": 0,
-            "hud_on": False,
+            "hud_on": True,             # auto-detect ON by default (learns the HUD on its own)
             "hud_region": (0, 0, 400, 400),
             "hud_status": "off",
             "hud_det": None,
@@ -80,6 +82,10 @@ class AppController:
             # All effects default ON; the GUI applies any saved overrides from config.
             **{f"en_{k}": True for k in EFFECT_ENABLE_KEYS},
         }
+        self._wt_proc_next = 0.0          # next time to re-check the WT process (slow cadence)
+        self._wt_proc_open = False        # last WT process-presence result
+        self._loadout_missing = set()     # calibrated rows missing on the PREVIOUS loadout check
+                                          # (debounces disappear/move-driven re-learns vs cloud)
 
         self._log_q = queue.Queue()
         # Serialises calibration: the manual 'Re-learn' button and the HUD worker both call
@@ -109,7 +115,7 @@ class AppController:
         cfg = config.load(self.CONFIG)
         if cfg.get("hud_region"):
             self.state["hud_region"] = tuple(cfg["hud_region"])
-        self.state["hud_on"] = bool(cfg.get("hud_on", False))
+        self.state["hud_on"] = bool(cfg.get("hud_on", True))
         self.state["callsign"] = cfg.get("callsign", "")
         return cfg.get("enables") or {}
 
@@ -259,6 +265,21 @@ class AppController:
                     self.state["stick_ok"] = False
             time.sleep(1.0)
 
+    def _refresh_wt_open(self, server_up):
+        """Decide whether War Thunder is OPEN. The localhost telemetry server being reachable
+        (server_up) proves it, but some players disable that server while HUD detection (pure
+        screen capture) still works -- so we ALSO check the client process on a slow cadence.
+        wt_open = (server reachable) OR (aces.exe running). Process polling is cheap but not
+        free, so it runs every ~2s, not every fast tick."""
+        now = time.time()
+        if now >= self._wt_proc_next:
+            self._wt_proc_next = now + 2.0
+            try:
+                self._wt_proc_open = wt_process.is_warthunder_running()
+            except Exception:
+                self._wt_proc_open = False
+        self.state["wt_open"] = bool(server_up or self._wt_proc_open)
+
     def wt_worker(self):
         hud_seeded = False
         cyc = 0
@@ -267,6 +288,7 @@ class AppController:
             # (zero visual lag, unlike reading the HUD ammo counter), so the lowest-latency,
             # most reliable gun signal is this localhost value polled quickly.
             ind = self.wt.indicators()
+            server_up = ind is not None            # any response => WT's web server is up
             if isinstance(ind, dict) and ind.get("valid"):
                 self.state["game_ok"] = True
                 w2 = ind.get("weapon2", 0.0) or 0.0
@@ -274,6 +296,9 @@ class AppController:
                     self.effects.gun_active(0.18)
             else:
                 self.state["game_ok"] = False
+            # "WT open" (process or server) gates HUD scanning so it only runs when the game can
+            # actually be on screen -- never churning calibration on the desktop/other windows.
+            self._refresh_wt_open(server_up)
             # KILL/DEATH feed: only needs ~300 ms cadence. Polled independently of indicators
             # validity (/hudmsg works whenever WT's web server is up), every ~6th fast tick.
             if cyc % 6 == 0:
@@ -335,6 +360,14 @@ class AppController:
                 self.state["hud_status"] = "unavailable"
                 time.sleep(1.0)
                 continue
+            # Only scan when War Thunder is actually open. Off-game (desktop / other windows)
+            # there is nothing to read, and probing/calibrating there would churn or mis-learn.
+            # While recording we keep going regardless (the user is deliberately capturing).
+            if not self.state["wt_open"] and not (time.time() < self.state["hud_rec_until"]):
+                self.state["hud_status"] = "waiting for War Thunder…"
+                det.reset()
+                time.sleep(0.5)
+                continue
             if not det.calibrated:
                 # Auto-calibrate silently when counters are visible. A cheap one-frame probe
                 # gates the expensive OCR so we don't churn in menus/clear sky.
@@ -361,22 +394,39 @@ class AppController:
                 continue
             det.region = self.state["hud_region"]
             now = time.time()
-            # loadout-change detection: periodically check the visible weapon set. If a weapon
-            # row appears that wasn't calibrated (loadout swap / a missed column), re-learn.
+            # Loadout / row-change detection: periodically compare the VISIBLE weapon set to the
+            # calibrated one and re-learn so the system tracks rows as they appear, disappear, or
+            # move. Checked every ~3s for responsiveness.
+            #   * APPEAR  (a visible weapon we never calibrated) -> re-learn IMMEDIATELY. A freshly
+            #     OCR'd valid weapon token is high-confidence (cloud rarely forms one), and it
+            #     means a real loadout add / a row that just became available.
+            #   * DISAPPEAR/MOVE (a calibrated weapon no longer seen while others still are) ->
+            #     re-learn only if it PERSISTS across two consecutive checks. A single washed-out
+            #     frame can transiently hide a row, so debouncing avoids churning calibration
+            #     (which is blocking and resets the tracker) on mere cloud flicker.
             if (not (now < self.state["hud_rec_until"]) and now >= self.state["hud_loadout_next"]
                     and not self.state["hud_calibrating"]):
-                self.state["hud_loadout_next"] = now + 8.0
+                self.state["hud_loadout_next"] = now + 3.0
                 try:
                     vis = det.visible_labels()
                 except Exception:
                     vis = set()
                 known = set(det.calib.rows) if det.calib else set()
                 new_weapons = vis - known
+                missing = (known - vis) if vis else set()      # ignore "all gone" (menu/blank)
                 if new_weapons:
+                    self._loadout_missing = set()
                     self.log(f"New weapon(s) on HUD ({', '.join(sorted(new_weapons))}) — "
                              f"re-learning…", "fx")
                     self.calibrate_core(False)
                     continue
+                if missing and missing == self._loadout_missing:
+                    self._loadout_missing = set()
+                    self.log(f"HUD rows changed ({', '.join(sorted(missing))} moved/gone) — "
+                             f"re-learning…", "fx")
+                    self.calibrate_core(False)
+                    continue
+                self._loadout_missing = missing                # remember for the debounce
             recording = now < self.state["hud_rec_until"]
             rec_info = None
             if recording:
