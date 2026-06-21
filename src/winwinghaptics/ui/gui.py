@@ -1,9 +1,15 @@
-"""Tkinter view — builds the window and wires widgets to the AppController.
+"""Tkinter view — Concept A: a tabbed shell over the AppController.
 
-The view owns ONLY presentation: palette/fonts, widgets, the region-select overlay, the log
-pump and the status refresh. All domain behaviour (workers, detector, calibration, recording,
-config) lives in AppController. A small UiBridge marshals the few controller->UI callbacks
-(calibration label, record button) onto the Tk main thread via root.after.
+Layout: a status strip (joystick / War Thunder) above a tab bar (Effects / Device / Activity).
+The Effects tab renders a single, data-driven list from ui.effectspec (one row per trigger:
+icon + name + Test + enable switch), which removes the old duplicate "Gun" and the artificial
+weapons-vs-outcomes split into test-only / toggle-only cards. The Device tab holds the device
+info, HUD auto-detect, callsign and the diagnostic tools; Activity holds the log.
+
+The view owns ONLY presentation; all domain behaviour (workers, detector, calibration, recording,
+config) lives in AppController. A small UiBridge marshals controller->UI callbacks (calibration
+label, record button) onto the Tk main thread via root.after. Look-and-feel comes from ui.theme
+tokens; icons are vendored Lucide SVGs rendered by ui.icons.
 """
 import os
 import sys
@@ -11,6 +17,12 @@ import ctypes
 
 from .. import config
 from ..app import AppController
+from . import theme
+from . import effectspec
+from .icons import IconLoader
+from .widgets import ToggleSwitch, RoundedButton, RoundedFrame, RoundedTile, ScrollFrame
+
+C = theme.COLOR
 
 
 class UiBridge:
@@ -19,8 +31,8 @@ class UiBridge:
         self._root = root
         self._get_calib_label = get_calib_label
         self._get_record_button = get_record_button
-        self.green = "#33d17a"
-        self.muted = "#8b97a4"
+        self.green = C["status_ok"]
+        self.muted = C["text_muted"]
 
     def set_calib_label(self, text, ok=False):
         def apply():
@@ -40,7 +52,7 @@ class UiBridge:
             btn = self._get_record_button()
             if btn is not None:
                 try:
-                    btn.config(text=text)
+                    btn.set_text(text)
                 except Exception:
                     pass
         try:
@@ -62,210 +74,281 @@ def run_gui(app_file):
         except Exception:
             pass
 
-    # --- palette ---
-    BG       = "#0f1216"
-    PANEL    = "#171c22"
-    PANEL2   = "#1e252d"
-    FG       = "#e6edf3"
-    MUTED    = "#8b97a4"
-    ACCENT   = "#ff7a18"
-    GREEN    = "#33d17a"
-    RED      = "#e5484d"
-    GREYDOT  = "#566270"
-
     base_dir = config.app_base_dir(app_file)
     ctrl = AppController(base_dir)
     state = ctrl.state
     effects = ctrl.effects
-    _HUD_AVAILABLE = ctrl.hud_available
+    _HUD = ctrl.hud_available
 
     root = tk.Tk()
     root.title("Winwing Haptics")
-    root.geometry("452x740")
-    root.minsize(452, 700)
-    root.configure(bg=BG)
+    root.geometry("452x760")
+    root.minsize(452, 720)
+    root.configure(bg=C["bg_base"])
 
-    f_title = tkfont.Font(family="Segoe UI Semibold", size=13)
-    f_sub   = tkfont.Font(family="Segoe UI", size=8)
-    f_body  = tkfont.Font(family="Segoe UI", size=9)
+    icons = IconLoader(root)
+
+    def ic(name, color, size):
+        return icons.get(name, color, size)
+
+    # fonts (named tk fonts pull from the token ramp)
+    f_title = tkfont.Font(family=theme.FONT["title"][0], size=12)
+    f_sub = tkfont.Font(family="Segoe UI", size=8)
+    f_body = tkfont.Font(family=theme.FONT["body"][0], size=theme.FONT["body"][1])
+    f_name = tkfont.Font(family="Segoe UI", size=10)
     f_small = tkfont.Font(family="Segoe UI", size=8)
-    f_mono  = tkfont.Font(family="Consolas", size=8)
+    f_mono = tkfont.Font(family=theme.FONT["mono"][0], size=theme.FONT["mono"][1])
+    f_strong = tkfont.Font(family="Segoe UI Semibold", size=10)
 
-    # widget refs the UiBridge needs (filled in below; bridge reads them lazily)
     refs = {"calib_lbl": None, "rec_btn": None}
     ctrl.ui = UiBridge(root, lambda: refs["calib_lbl"], lambda: refs["rec_btn"])
 
     def log(msg, tag=None):
         ctrl.log(msg, tag)
 
-    def card(parent, pad=10):
-        c = tk.Frame(parent, bg=PANEL, highlightthickness=1, highlightbackground="#262d36")
-        c.pack(fill="x", padx=12, pady=(0, 8))
-        inner = tk.Frame(c, bg=PANEL)
-        inner.pack(fill="x", padx=pad, pady=pad)
-        return inner
+    # ---------------- Header ----------------
+    header = tk.Frame(root, bg=C["bg_base"])
+    header.pack(fill="x", padx=14, pady=(12, 8))
+    bar = tk.Frame(header, bg=C["accent"], width=3, height=30)
+    bar.pack(side="left", padx=(0, 9)); bar.pack_propagate(False)
+    htext = tk.Frame(header, bg=C["bg_base"]); htext.pack(side="left")
+    tk.Label(htext, text="Winwing Haptics", bg=C["bg_base"], fg=C["text"],
+             font=f_title).pack(anchor="w")
+    tk.Label(htext, text="War Thunder → controller rumble", bg=C["bg_base"],
+             fg=C["text_muted"], font=f_sub).pack(anchor="w")
 
-    # ---------- Header ----------
-    header = tk.Frame(root, bg=BG)
-    header.pack(fill="x", padx=14, pady=(12, 10))
-    bar = tk.Frame(header, bg=ACCENT, width=3, height=30)
-    bar.pack(side="left", padx=(0, 9))
-    bar.pack_propagate(False)
-    htext = tk.Frame(header, bg=BG)
-    htext.pack(side="left")
-    tk.Label(htext, text="Winwing Haptics", bg=BG, fg=FG, font=f_title).pack(anchor="w")
-    tk.Label(htext, text="War Thunder → Ursa Minor rumble", bg=BG, fg=MUTED,
-             font=f_sub).pack(anchor="w")
+    # ---------------- Status strip ----------------
+    strip = tk.Frame(root, bg=C["bg_base"]); strip.pack(fill="x", padx=12, pady=(0, 8))
 
-    # ---------- Status card ----------
-    st = card(root)
-
-    def status_row(parent, label):
-        row = tk.Frame(parent, bg=PANEL)
-        row.pack(fill="x", pady=2)
-        dot = tk.Canvas(row, width=12, height=12, bg=PANEL, highlightthickness=0)
+    def stat_card(parent, icon_name, label):
+        card = RoundedFrame(parent, radius=9, padx=10, pady=8)
+        inner = card.inner
+        dot = tk.Label(inner, image=ic(icon_name, C["status_idle"], theme.ICON["status"]),
+                       bg=C["bg_card"])
+        dot.image = ic(icon_name, C["status_idle"], theme.ICON["status"])
         dot.pack(side="left")
-        oid = dot.create_oval(2, 2, 11, 11, fill=GREYDOT, outline="")
-        tk.Label(row, text=label, bg=PANEL, fg=FG, font=f_body).pack(side="left", padx=7)
-        val = tk.Label(row, text="—", bg=PANEL, fg=MUTED, font=f_small)
+        tk.Label(inner, text=label, bg=C["bg_card"], fg=C["text"],
+                 font=f_body).pack(side="left", padx=8)
+        val = tk.Label(inner, text="—", bg=C["bg_card"], fg=C["text_muted"], font=f_small)
         val.pack(side="right")
-        return dot, oid, val
-    stick_dot, stick_oid, stick_val = status_row(st, "Joystick")
-    game_dot, game_oid, game_val = status_row(st, "War Thunder")
+        return card, dot, val, icon_name
+    sc1, stick_dot, stick_val, stick_icn = stat_card(strip, "plug", "Joystick")
+    sc1.pack(side="left", fill="x", expand=True, padx=(0, 4))
+    sc2, game_dot, game_val, game_icn = stat_card(strip, "radio", "War Thunder")
+    sc2.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-    def style_btn(parent, text, cmd, primary=False, small=False):
-        bgc = ACCENT if primary else PANEL2
-        fgc = "#1a1109" if primary else FG
-        b = tk.Label(parent, text=text, bg=bgc, fg=fgc, font=f_body,
-                     padx=(8 if small else 11), pady=(4 if small else 6), cursor="hand2")
-        def on_enter(_): b.configure(bg=("#ff9442" if primary else "#27303a"))
-        def on_leave(_): b.configure(bg=bgc)
-        b.bind("<Enter>", on_enter); b.bind("<Leave>", on_leave)
-        b.bind("<Button-1>", lambda _e: cmd())
-        return b
+    # ---------------- Tab bar + content ----------------
+    tabbar = tk.Frame(root, bg=C["bg_base"]); tabbar.pack(fill="x", padx=12)
+    underline = tk.Frame(root, bg=C["stroke"], height=1); underline.pack(fill="x")
+    content = tk.Frame(root, bg=C["bg_base"]); content.pack(fill="both", expand=True)
 
-    # ---------- Weapon haptics (HUD-driven) info ----------
-    wb = card(root)
-    tk.Label(wb, text="WEAPON HAPTICS", bg=PANEL, fg=MUTED, font=f_small).pack(anchor="w")
-    tk.Label(wb, text="Missiles, rockets, bombs, guns and countermeasures are detected "
-             "automatically from the HUD (enable below). Test the effects here:",
-             bg=PANEL, fg=MUTED, font=f_small, anchor="w", wraplength=400,
-             justify="left").pack(anchor="w", pady=(2, 6))
-    testrow = tk.Frame(wb, bg=PANEL); testrow.pack(fill="x")
-    style_btn(testrow, "Missile", lambda: effects.missile(), small=True).pack(side="left")
-    style_btn(testrow, "Rocket", lambda: effects.rocket(), small=True).pack(side="left", padx=4)
-    style_btn(testrow, "Bomb", lambda: effects.bomb(), small=True).pack(side="left")
-    style_btn(testrow, "Gun", lambda: effects.gun_active(0.4), small=True).pack(side="left", padx=4)
-    style_btn(testrow, "Flare", lambda: effects.flare(), small=True).pack(side="left")
+    pages = {}
+    tabs = {}
+    current = {"name": None}
 
-    # ---------- HUD auto-detect card ----------
-    hud_card = card(root)
-    hrow = tk.Frame(hud_card, bg=PANEL); hrow.pack(fill="x")
-    tk.Label(hrow, text="HUD AUTO-DETECT", bg=PANEL, fg=MUTED, font=f_small).pack(side="left")
-    hud_state_lbl = tk.Label(hrow, text="off", bg=PANEL, fg=MUTED, font=f_small)
+    def select_tab(name):
+        for n, fr in pages.items():
+            fr.pack_forget()
+        pages[name].pack(fill="both", expand=True)
+        for n, (lbl, icon_name) in tabs.items():
+            on = (n == name)
+            lbl.configure(fg=(C["text"] if on else C["text_muted"]),
+                          image=ic(icon_name, C["accent"] if on else C["text_muted"],
+                                   theme.ICON["tab"]))
+            lbl.image = ic(icon_name, C["accent"] if on else C["text_muted"], theme.ICON["tab"])
+            lbl.master.configure(bg=(C["accent"] if on else C["bg_base"]))
+        current["name"] = name
+
+    def add_tab(name, icon_name, scroll=True):
+        wrap = tk.Frame(tabbar, bg=C["bg_base"])
+        wrap.pack(side="left", padx=(0, 2))
+        marker = tk.Frame(wrap, bg=C["bg_base"], height=2); marker.pack(side="bottom", fill="x")
+        lbl = tk.Label(wrap, text="  " + name, bg=C["bg_base"], fg=C["text_muted"],
+                       font=f_body, image=ic(icon_name, C["text_muted"], theme.ICON["tab"]),
+                       compound="left", padx=8, pady=8, cursor="hand2")
+        lbl.image = ic(icon_name, C["text_muted"], theme.ICON["tab"])
+        lbl.pack()
+        lbl.bind("<Button-1>", lambda _e, nm=name: select_tab(nm))
+        tabs[name] = (lbl, icon_name)
+        page = tk.Frame(content, bg=C["bg_base"])
+        pages[name] = page
+        # scrollable tabs return their inner frame so tall content (the effects list / device
+        # settings) scrolls instead of being clipped by the window height.
+        if scroll:
+            sf = ScrollFrame(page, bg=C["bg_base"])
+            sf.pack(fill="both", expand=True)
+            return sf.inner
+        return page
+
+    page_effects = add_tab("Effects", "zap")
+    page_device = add_tab("Device", "joystick")
+    page_activity = add_tab("Activity", "scroll-text", scroll=False)
+
+    # ============== EFFECTS TAB ==============
+    enable_vars = {}
+    switch_widgets = {}  # name -> ToggleSwitch
+    row_widgets = {}     # name -> (icon_tile, desc_label)
+
+    def make_test(spec):
+        def run():
+            try:
+                if spec.test == "gun_active":
+                    effects.gun_active(0.4)
+                else:
+                    getattr(effects, spec.test)()
+            except Exception as e:
+                log(f"test {spec.name} failed: {e}")
+        return run
+
+    def on_enable(name, value):
+        state[f"en_{name}"] = bool(value)
+        ctrl.save_cfg()
+
+    def effect_row(parent, spec, last=False):
+        row = tk.Frame(parent, bg=C["bg_card"])
+        row.pack(fill="x")
+        line = tk.Frame(row, bg=C["bg_card"]); line.pack(fill="x", padx=12, pady=8)
+        # rounded icon tile
+        tile = RoundedTile(line, ic(spec.icon, C["text_muted"], theme.ICON["row"]),
+                           size=32, radius=8, fill=C["bg_subtle"], bg=C["bg_card"])
+        tile.pack(side="left")
+        # name + desc
+        txt = tk.Frame(line, bg=C["bg_card"]); txt.pack(side="left", padx=11)
+        tk.Label(txt, text=spec.label, bg=C["bg_card"], fg=C["text"],
+                 font=f_name, anchor="w").pack(anchor="w")
+        dlbl = tk.Label(txt, text=spec.desc, bg=C["bg_card"], fg=C["text_muted"],
+                        font=f_small, anchor="w")
+        if spec.desc:
+            dlbl.pack(anchor="w")
+        # switch (right), then Test pill
+        var = tk.BooleanVar(value=state.get(f"en_{spec.name}", True))
+        enable_vars[spec.name] = var
+        sw = ToggleSwitch(line, var, on_toggle=lambda v, n=spec.name: on_enable(n, v))
+        sw.pack(side="right", padx=(8, 0))
+        switch_widgets[spec.name] = sw
+        RoundedButton(line, "Test", make_test(spec),
+                      icon=ic("play", C["text_muted"], theme.ICON["action"]),
+                      bg=C["bg_card"]).pack(side="right")
+        row_widgets[spec.name] = (tile, dlbl)
+        if not last:
+            tk.Frame(row, bg="#20272f", height=1).pack(fill="x", padx=12)
+        return row
+
+    def group_card(parent, title, specs):
+        tk.Label(parent, text=title.upper(), bg=C["bg_base"], fg=C["text_muted"],
+                 font=f_small).pack(anchor="w", padx=16, pady=(12, 6))
+        card = RoundedFrame(parent, radius=10, padx=0, pady=0)
+        card.pack(fill="x", padx=12, pady=(0, 2))
+        for i, s in enumerate(specs):
+            effect_row(card.inner, s, last=(i == len(specs) - 1))
+
+    for gid, gtitle in effectspec.GROUPS:
+        group_card(page_effects, gtitle, effectspec.specs_in_group(gid))
+
+    # ============== DEVICE TAB ==============
+    def card(parent):
+        c = RoundedFrame(parent, radius=10, padx=12, pady=12)
+        c.pack(fill="x", padx=12, pady=(0, 8))
+        return c.inner
+
+    tk.Label(page_device, text="", bg=C["bg_base"]).pack(pady=(4, 0))
+    dev_card = card(page_device)
+    dev_top = tk.Frame(dev_card, bg=C["bg_card"]); dev_top.pack(fill="x")
+    dtile = RoundedTile(dev_top, ic("joystick", C["text"], 18), size=34, radius=8,
+                        fill=C["bg_subtle"], bg=C["bg_card"])
+    dtile.pack(side="left")
+    dev_name = type(ctrl.stick).__name__
+    try:
+        dev_name = ctrl.stick.capabilities.name
+    except Exception:
+        pass
+    dtxt = tk.Frame(dev_top, bg=C["bg_card"]); dtxt.pack(side="left", padx=10)
+    tk.Label(dtxt, text=dev_name, bg=C["bg_card"], fg=C["text"], font=f_body).pack(anchor="w")
+    dev_state_lbl = tk.Label(dtxt, text="searching…", bg=C["bg_card"], fg=C["text_muted"],
+                             font=f_small)
+    dev_state_lbl.pack(anchor="w")
+
+    # callsign
+    cs_card = card(page_device)
+    tk.Label(cs_card, text="CALLSIGN", bg=C["bg_card"], fg=C["text_muted"],
+             font=f_small).pack(anchor="w")
+    tk.Label(cs_card, text="Your in-game name — kill / hit / death only fire for you.",
+             bg=C["bg_card"], fg=C["text_muted"], font=f_small, wraplength=360,
+             justify="left").pack(anchor="w", pady=(1, 6))
+    callsign_var = tk.StringVar(value="")
+    cs_entry = tk.Entry(cs_card, textvariable=callsign_var, bg=C["bg_subtle"], fg=C["text"],
+                        font=f_small, insertbackground=C["text"], relief="flat", width=24)
+    cs_entry.pack(anchor="w", ipady=3)
+
+    def on_callsign(*_):
+        state["callsign"] = callsign_var.get().strip(); ctrl.save_cfg()
+    callsign_var.trace_add("write", on_callsign)
+
+    # HUD auto-detect + diagnostics
+    hud_card = card(page_device)
+    hrow = tk.Frame(hud_card, bg=C["bg_card"]); hrow.pack(fill="x")
+    tk.Label(hrow, text="HUD AUTO-DETECT", bg=C["bg_card"], fg=C["text_muted"],
+             font=f_small).pack(side="left")
+    hud_state_lbl = tk.Label(hrow, text="off", bg=C["bg_card"], fg=C["text_muted"], font=f_small)
     hud_state_lbl.pack(side="right")
     en_hud = tk.BooleanVar(value=state["hud_on"])
 
-    def toggle_hud():
-        state["hud_on"] = en_hud.get()
-        ctrl.save_cfg()
-        if state["hud_on"] and not _HUD_AVAILABLE:
+    def toggle_hud(v=None):
+        state["hud_on"] = en_hud.get(); ctrl.save_cfg()
+        if state["hud_on"] and not _HUD:
             log("HUD auto-detect unavailable (OCR engine/numpy missing).")
         else:
             log(f"HUD auto-detect {'enabled' if state['hud_on'] else 'disabled'}.")
 
-    if _HUD_AVAILABLE:
-        tk.Checkbutton(hud_card, text="Read weapon counts from screen (AAM/RKT/BMB/FLR/CHFF)",
-                       variable=en_hud, command=toggle_hud, bg=PANEL, fg=FG,
-                       activebackground=PANEL, activeforeground=FG, selectcolor=PANEL2,
-                       font=f_body, anchor="w", highlightthickness=0, bd=0,
-                       wraplength=380, justify="left").pack(anchor="w", pady=(4, 2))
-        hud_btns = tk.Frame(hud_card, bg=PANEL); hud_btns.pack(fill="x")
-        style_btn(hud_btns, "Set Region", lambda: calibrate_hud(), small=True).pack(side="left")
-        style_btn(hud_btns, "Re-learn HUD", lambda: ctrl.calibrate_detector(),
-                  small=True).pack(side="left", padx=(6, 0))
-        hud_rec_btn = style_btn(hud_btns, "Record 30s", lambda: ctrl.start_record(), small=True)
-        hud_rec_btn.pack(side="left", padx=(6, 0))
-        refs["rec_btn"] = hud_rec_btn
+    if _HUD:
+        hud_toggle_row = tk.Frame(hud_card, bg=C["bg_card"]); hud_toggle_row.pack(fill="x", pady=(6, 2))
+        tk.Label(hud_toggle_row, text="Read weapon counts from the screen",
+                 bg=C["bg_card"], fg=C["text"], font=f_body).pack(side="left")
+        ToggleSwitch(hud_toggle_row, en_hud, on_toggle=toggle_hud).pack(side="right")
         rg = state["hud_region"]
         hud_region_lbl = tk.Label(hud_card, text=f"region: {rg[0]},{rg[1]} {rg[2]}x{rg[3]}",
-                                  bg=PANEL, fg=MUTED, font=f_small)
-        hud_region_lbl.pack(anchor="w", pady=(2, 0))
+                                  bg=C["bg_card"], fg=C["text_muted"], font=f_small)
+        hud_region_lbl.pack(anchor="w", pady=(6, 0))
         hud_calib_lbl = tk.Label(hud_card,
-                                 text="Auto-learns your HUD the first time it sees the counters in a match. "
-                                      "Use 'Re-learn HUD' only if the readout looks wrong.",
-                                 bg=PANEL, fg=MUTED, font=f_small, wraplength=380, justify="left")
-        hud_calib_lbl.pack(anchor="w", pady=(2, 0))
+                                 text="Auto-learns your HUD the first time it sees the counters.",
+                                 bg=C["bg_card"], fg=C["text_muted"], font=f_small,
+                                 wraplength=360, justify="left")
+        hud_calib_lbl.pack(anchor="w", pady=(2, 8))
         refs["calib_lbl"] = hud_calib_lbl
+
+        tk.Label(hud_card, text="ADVANCED", bg=C["bg_card"], fg=C["text_muted"],
+                 font=f_small).pack(anchor="w", pady=(2, 4))
+        adv = tk.Frame(hud_card, bg=C["bg_card"]); adv.pack(fill="x")
+        RoundedButton(adv, "Set Region", lambda: calibrate_hud(),
+                      bg=C["bg_card"]).pack(side="left")
+        RoundedButton(adv, "Re-learn HUD", lambda: ctrl.calibrate_detector(),
+                      bg=C["bg_card"]).pack(side="left", padx=6)
+        rec_btn = RoundedButton(adv, "Record 30s", lambda: ctrl.start_record(), bg=C["bg_card"])
+        rec_btn.pack(side="left")
+        refs["rec_btn"] = rec_btn
     else:
         tk.Label(hud_card, text="Unavailable in this build (needs OCR engine).",
-                 bg=PANEL, fg=MUTED, font=f_small).pack(anchor="w", pady=2)
+                 bg=C["bg_card"], fg=C["text_muted"], font=f_small).pack(anchor="w", pady=4)
         hud_region_lbl = None
-        hud_calib_lbl = None
-        hud_rec_btn = None
 
-    # ---------- Effects (outcome) card ----------
-    ef = card(root)
-    tk.Label(ef, text="OUTCOME EFFECTS", bg=PANEL, fg=MUTED, font=f_small).pack(anchor="w", pady=(0, 4))
-    en_gun = tk.BooleanVar(value=True)
-    en_kill = tk.BooleanVar(value=True)
-    en_hit = tk.BooleanVar(value=True)
-    en_death = tk.BooleanVar(value=True)
-
-    def sync_enables():
-        """Mirror the Tk enable vars into the controller's state dict (UI thread only)."""
-        state["en_gun"] = bool(en_gun.get())
-        state["en_kill"] = bool(en_kill.get())
-        state["en_hit"] = bool(en_hit.get())
-        state["en_death"] = bool(en_death.get())
-
-    def chk(parent, text, var, r, col):
-        cb = tk.Checkbutton(parent, text=text, variable=var, bg=PANEL, fg=FG,
-                            activebackground=PANEL, activeforeground=FG,
-                            selectcolor=PANEL2, font=f_body, anchor="w",
-                            highlightthickness=0, bd=0, padx=2,
-                            command=lambda: (sync_enables(), ctrl.save_cfg()))
-        cb.grid(row=r, column=col, sticky="w", padx=(0, 10), pady=1)
-
-    grid = tk.Frame(ef, bg=PANEL); grid.pack(fill="x")
-    chk(grid, "Gun rumble", en_gun, 0, 0)
-    chk(grid, "Kill confirm", en_kill, 0, 1)
-    chk(grid, "Took a hit", en_hit, 1, 0)
-    chk(grid, "Death", en_death, 1, 1)
-
-    # callsign (so kill/death only fire for YOU, not every player in the match)
-    csrow = tk.Frame(ef, bg=PANEL); csrow.pack(fill="x", pady=(6, 0))
-    tk.Label(csrow, text="Your callsign:", bg=PANEL, fg=MUTED, font=f_small).pack(side="left")
-    callsign_var = tk.StringVar(value="")
-    cs_entry = tk.Entry(csrow, textvariable=callsign_var, bg=PANEL2, fg=FG, font=f_small,
-                        insertbackground=FG, relief="flat", width=18)
-    cs_entry.pack(side="left", padx=6, ipady=2)
-
-    def on_callsign(*_):
-        state["callsign"] = callsign_var.get().strip()
-        ctrl.save_cfg()
-    callsign_var.trace_add("write", on_callsign)
-    tk.Label(ef, text="(in-game name — kill/death effects only fire for you)",
-             bg=PANEL, fg=MUTED, font=f_small).pack(anchor="w")
-
-    # ---------- Log ----------
-    logcard = tk.Frame(root, bg=PANEL, highlightthickness=1, highlightbackground="#262d36")
-    logcard.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-    tk.Label(logcard, text="ACTIVITY", bg=PANEL, fg=MUTED, font=f_small).pack(anchor="w", padx=10, pady=(8, 2))
-    logwrap = tk.Frame(logcard, bg=PANEL); logwrap.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-    txt = tk.Text(logwrap, height=6, state="disabled", bg=PANEL2, fg="#aeb9c4",
-                  insertbackground=FG, font=f_mono, relief="flat", bd=0,
+    # ============== ACTIVITY TAB ==============
+    logcard = tk.Frame(page_activity, bg=C["bg_card"], highlightthickness=1,
+                       highlightbackground=C["stroke"])
+    logcard.pack(fill="both", expand=True, padx=12, pady=10)
+    tk.Label(logcard, text="ACTIVITY", bg=C["bg_card"], fg=C["text_muted"],
+             font=f_small).pack(anchor="w", padx=10, pady=(8, 2))
+    logwrap = tk.Frame(logcard, bg=C["bg_card"]); logwrap.pack(fill="both", expand=True,
+                                                               padx=8, pady=(0, 8))
+    txt = tk.Text(logwrap, height=10, state="disabled", bg=C["bg_subtle"], fg="#aeb9c4",
+                  insertbackground=C["text"], font=f_mono, relief="flat", bd=0,
                   padx=6, pady=4, wrap="word")
-    sb = tk.Scrollbar(logwrap, command=txt.yview)
-    txt.configure(yscrollcommand=sb.set)
-    txt.pack(side="left", fill="both", expand=True)
-    sb.pack(side="right", fill="y")
-    txt.tag_config("kill", foreground=GREEN)
-    txt.tag_config("death", foreground=RED)
-    txt.tag_config("fx", foreground=ACCENT)
-    txt.tag_config("wt", foreground=MUTED)
+    sb = tk.Scrollbar(logwrap, command=txt.yview); txt.configure(yscrollcommand=sb.set)
+    txt.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
+    txt.tag_config("kill", foreground=C["status_ok"])
+    txt.tag_config("death", foreground=C["status_bad"])
+    txt.tag_config("fx", foreground=C["accent"])
+    txt.tag_config("wt", foreground=C["text_muted"])
 
-    # log pump: drain the controller's thread-safe queue onto the Tk Text on the UI thread.
     def _drain_log():
         pending = ctrl.drain_log()
         if pending:
@@ -278,25 +361,24 @@ def run_gui(app_file):
         if state["running"]:
             root.after(80, _drain_log)
 
-    # ---------- HUD region calibration overlay (drag a box over the counters) ----------
+    # ---------------- HUD region overlay ----------------
     def calibrate_hud():
         ov = tk.Toplevel(root)
         ov.attributes("-fullscreen", True)
         ov.attributes("-alpha", 0.25)
         ov.configure(bg="#000000", cursor="crosshair")
         ov.attributes("-topmost", True)
-        cv = tk.Canvas(ov, bg="#101418", highlightthickness=0)
-        cv.pack(fill="both", expand=True)
+        cv = tk.Canvas(ov, bg="#101418", highlightthickness=0); cv.pack(fill="both", expand=True)
         cv.create_text(ov.winfo_screenwidth() // 2, 40,
-                       text="Drag a box around the weapon counters (RKT/BMB/AAM/FLR/CHFF/CNN). "
-                            "Esc to cancel.", fill="#ffffff", font=f_body)
+                       text="Drag a box around the weapon counters. Esc to cancel.",
+                       fill="#ffffff", font=f_body)
         sel = {"x0": 0, "y0": 0, "rect": None}
 
         def on_down(e):
             sel["x0"], sel["y0"] = e.x_root, e.y_root
             if sel["rect"]:
                 cv.delete(sel["rect"])
-            sel["rect"] = cv.create_rectangle(e.x, e.y, e.x, e.y, outline="#ff7a18", width=2)
+            sel["rect"] = cv.create_rectangle(e.x, e.y, e.x, e.y, outline=C["accent"], width=2)
             sel["cx0"], sel["cy0"] = e.x, e.y
 
         def on_move(e):
@@ -304,90 +386,95 @@ def run_gui(app_file):
                 cv.coords(sel["rect"], sel["cx0"], sel["cy0"], e.x, e.y)
 
         def on_up(e):
-            x0, y0 = sel["x0"], sel["y0"]
-            x1, y1 = e.x_root, e.y_root
-            l, t = min(x0, x1), min(y0, y1)
-            w, h = abs(x1 - x0), abs(y1 - y0)
+            x0, y0 = sel["x0"], sel["y0"]; x1, y1 = e.x_root, e.y_root
+            l, t = min(x0, x1), min(y0, y1); w, h = abs(x1 - x0), abs(y1 - y0)
             ov.destroy()
             if w > 30 and h > 20:
-                state["hud_region"] = (l, t, w, h)
-                ctrl.save_cfg()
+                state["hud_region"] = (l, t, w, h); ctrl.save_cfg()
                 if hud_region_lbl:
                     hud_region_lbl.config(text=f"region: {l},{t} {w}x{h}")
                 log(f"HUD region set: {l},{t} {w}x{h}")
 
-        def on_esc(_):
-            ov.destroy()
+        cv.bind("<Button-1>", on_down); cv.bind("<B1-Motion>", on_move)
+        cv.bind("<ButtonRelease-1>", on_up); ov.bind("<Escape>", lambda _e: ov.destroy())
 
-        cv.bind("<Button-1>", on_down)
-        cv.bind("<B1-Motion>", on_move)
-        cv.bind("<ButtonRelease-1>", on_up)
-        ov.bind("<Escape>", on_esc)
-
-    # load saved config now that controls exist
+    # ---------------- load saved config ----------------
     saved = ctrl.load_cfg()
-    if saved:
-        en_gun.set(saved.get("gun", True))
-        en_kill.set(saved.get("kill", True))
-        en_hit.set(saved.get("hit", True))
-        en_death.set(saved.get("death", True))
-    sync_enables()   # seed the worker-visible mirrors from the loaded checkbox states
+    for name in effectspec.ENABLE_KEYS:
+        if name in saved:
+            state[f"en_{name}"] = bool(saved[name])
+        if name in enable_vars:
+            enable_vars[name].set(state.get(f"en_{name}", True))
+            if name in switch_widgets:
+                switch_widgets[name].refresh()
     callsign_var.set(state.get("callsign", ""))
     en_hud.set(state["hud_on"])
-    if _HUD_AVAILABLE:
+    if _HUD:
         _d0 = ctrl.get_det()
         if _d0 is not None and _d0.calibrated:
             ctrl.ui.set_calib_label(
-                "HUD learned (%s). Re-learn only if readout looks wrong."
+                "HUD learned (%s). Re-learn only if the readout looks wrong."
                 % ", ".join(sorted(_d0.calib.rows)), ok=True)
 
-    # ---------- status refresh ----------
+    # ---------------- status refresh ----------------
+    def set_stat(dot, val, icon_name, ok, ok_text, idle_text, color_ok=None):
+        color = (color_ok or C["status_ok"]) if ok else C["status_idle"]
+        dot.configure(image=ic(icon_name, color, theme.ICON["status"]))
+        dot.image = ic(icon_name, color, theme.ICON["status"])
+        val.configure(text=ok_text if ok else idle_text,
+                      fg=(C["status_ok"] if ok else C["text_muted"]))
+
     def refresh():
-        if state["stick_ok"]:
-            stick_dot.itemconfig(stick_oid, fill=GREEN)
-            stick_val.config(text="connected", fg=GREEN)
-        else:
-            stick_dot.itemconfig(stick_oid, fill=RED)
-            stick_val.config(text="not found", fg=MUTED)
-        if state["game_ok"]:
-            game_dot.itemconfig(game_oid, fill=GREEN)
-            game_val.config(text="in match", fg=GREEN)
-        else:
-            game_dot.itemconfig(game_oid, fill=GREYDOT)
-            game_val.config(text="waiting", fg=MUTED)
+        set_stat(stick_dot, stick_val, stick_icn, state["stick_ok"], "connected", "not found")
+        set_stat(game_dot, game_val, game_icn, state["game_ok"], "in match", "waiting")
         try:
-            hud_state_lbl.config(text=state["hud_status"],
-                                 fg=(GREEN if state["hud_on"] and "reading" in state["hud_status"]
-                                     else MUTED))
+            dev_state_lbl.config(
+                text="connected · USB HID" if state["stick_ok"] else "searching…",
+                fg=C["status_ok"] if state["stick_ok"] else C["text_muted"])
         except Exception:
             pass
+        # live gun-firing row highlight
+        gname = "gun"
+        if gname in row_widgets:
+            tile, dlbl = row_widgets[gname]
+            firing = bool(state.get("firing_gun")) and state.get("en_gun", True)
+            col = C["accent"] if firing else C["text_muted"]
+            tile.set(image=ic("crosshair", col, theme.ICON["row"]),
+                     fill=("#2a1a0c" if firing else C["bg_subtle"]))
+            dlbl.configure(text="firing now" if firing else "cannon / MG",
+                           fg=C["accent"] if firing else C["text_muted"])
+        if _HUD:
+            try:
+                hud_state_lbl.config(
+                    text=state["hud_status"],
+                    fg=(C["status_ok"] if state["hud_on"] and "reading" in state["hud_status"]
+                        else C["text_muted"]))
+            except Exception:
+                pass
         if state["running"]:
             root.after(300, refresh)
 
+    select_tab("Effects")
     ctrl.start_workers()
     refresh()
-    _drain_log()   # start the UI-thread log pump
+    _drain_log()
 
     def on_close():
-        ctrl.shutdown()
-        root.destroy()
-
+        ctrl.shutdown(); root.destroy()
     root.protocol("WM_DELETE_WINDOW", on_close)
-    log("Ready. Enable HUD auto-detect — it learns your HUD automatically once you're in a match.")
+    log("Ready. Enable HUD auto-detect on the Device tab — it learns your HUD automatically.")
     root.mainloop()
 
 
 def _app_file():
-    """Fallback app entry file for the (non-frozen) config base dir, used when run_gui_safe
-    is called without an explicit app_file. Resolves to src/winwing_haptics.py so the config
-    path is unchanged from earlier versions."""
+    """Fallback app entry file for the (non-frozen) config base dir."""
     return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__)))), "winwing_haptics.py")
 
 
 def run_gui_safe(app_file=None):
     """Run the GUI; on any boot/runtime error write crash_log.txt next to the exe and show a
-    dialog -- so a boot failure is diagnosable instead of a silent exit (built --noconsole)."""
+    dialog so a boot failure is diagnosable instead of a silent exit (built --noconsole)."""
     if app_file is None:
         app_file = _app_file()
     try:
