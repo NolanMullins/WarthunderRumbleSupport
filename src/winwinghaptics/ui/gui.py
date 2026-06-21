@@ -20,7 +20,7 @@ from ..app import AppController
 from . import theme
 from . import effectspec
 from .icons import IconLoader
-from .widgets import ToggleSwitch, FlatButton
+from .widgets import ToggleSwitch, RoundedButton, RoundedFrame, RoundedTile
 
 C = theme.COLOR
 
@@ -52,7 +52,7 @@ class UiBridge:
             btn = self._get_record_button()
             if btn is not None:
                 try:
-                    btn.config(text=" " + text)
+                    btn.set_text(text)
                 except Exception:
                     pass
         try:
@@ -92,9 +92,10 @@ def run_gui(app_file):
         return icons.get(name, color, size)
 
     # fonts (named tk fonts pull from the token ramp)
-    f_title = tkfont.Font(family=theme.FONT["title"][0], size=theme.FONT["title"][1])
+    f_title = tkfont.Font(family=theme.FONT["title"][0], size=12)
     f_sub = tkfont.Font(family="Segoe UI", size=8)
     f_body = tkfont.Font(family=theme.FONT["body"][0], size=theme.FONT["body"][1])
+    f_name = tkfont.Font(family="Segoe UI", size=10)
     f_small = tkfont.Font(family="Segoe UI", size=8)
     f_mono = tkfont.Font(family=theme.FONT["mono"][0], size=theme.FONT["mono"][1])
     f_strong = tkfont.Font(family="Segoe UI Semibold", size=10)
@@ -120,9 +121,8 @@ def run_gui(app_file):
     strip = tk.Frame(root, bg=C["bg_base"]); strip.pack(fill="x", padx=12, pady=(0, 8))
 
     def stat_card(parent, icon_name, label):
-        card = tk.Frame(parent, bg=C["bg_card"], highlightthickness=1,
-                        highlightbackground=C["stroke"])
-        inner = tk.Frame(card, bg=C["bg_card"]); inner.pack(fill="x", padx=10, pady=8)
+        card = RoundedFrame(parent, radius=9, padx=10, pady=8)
+        inner = card.inner
         dot = tk.Label(inner, image=ic(icon_name, C["status_idle"], theme.ICON["status"]),
                        bg=C["bg_card"])
         dot.image = ic(icon_name, C["status_idle"], theme.ICON["status"])
@@ -180,7 +180,8 @@ def run_gui(app_file):
 
     # ============== EFFECTS TAB ==============
     enable_vars = {}
-    row_widgets = {}     # name -> (icon_tile, icon_label, desc_label)
+    switch_widgets = {}  # name -> ToggleSwitch
+    row_widgets = {}     # name -> (icon_tile, desc_label)
 
     def make_test(spec):
         def run():
@@ -197,64 +198,59 @@ def run_gui(app_file):
         state[f"en_{name}"] = bool(value)
         ctrl.save_cfg()
 
-    def effect_row(parent, spec):
+    def effect_row(parent, spec, last=False):
         row = tk.Frame(parent, bg=C["bg_card"])
         row.pack(fill="x")
-        line = tk.Frame(row, bg=C["bg_card"]); line.pack(fill="x", padx=12, pady=10)
-        # icon tile
-        tile = tk.Frame(line, bg=C["bg_subtle"], width=32, height=32,
-                        highlightthickness=0)
-        tile.pack(side="left"); tile.pack_propagate(False)
-        ilbl = tk.Label(tile, image=ic(spec.icon, C["text_muted"], theme.ICON["row"]),
-                        bg=C["bg_subtle"])
-        ilbl.image = ic(spec.icon, C["text_muted"], theme.ICON["row"])
-        ilbl.place(relx=0.5, rely=0.5, anchor="center")
+        line = tk.Frame(row, bg=C["bg_card"]); line.pack(fill="x", padx=12, pady=8)
+        # rounded icon tile
+        tile = RoundedTile(line, ic(spec.icon, C["text_muted"], theme.ICON["row"]),
+                           size=32, radius=8, fill=C["bg_subtle"], bg=C["bg_card"])
+        tile.pack(side="left")
         # name + desc
-        txt = tk.Frame(line, bg=C["bg_card"]); txt.pack(side="left", padx=10)
+        txt = tk.Frame(line, bg=C["bg_card"]); txt.pack(side="left", padx=11)
         tk.Label(txt, text=spec.label, bg=C["bg_card"], fg=C["text"],
-                 font=f_body, anchor="w").pack(anchor="w")
+                 font=f_name, anchor="w").pack(anchor="w")
         dlbl = tk.Label(txt, text=spec.desc, bg=C["bg_card"], fg=C["text_muted"],
                         font=f_small, anchor="w")
-        dlbl.pack(anchor="w")
-        # switch (right), then Test
+        if spec.desc:
+            dlbl.pack(anchor="w")
+        # switch (right), then Test pill
         var = tk.BooleanVar(value=state.get(f"en_{spec.name}", True))
         enable_vars[spec.name] = var
         sw = ToggleSwitch(line, var, on_toggle=lambda v, n=spec.name: on_enable(n, v))
-        sw.pack(side="right")
-        FlatButton(line, "Test", make_test(spec),
-                   icon=ic("play", C["text_muted"], theme.ICON["action"]),
-                   bg=C["bg_card"]).pack(side="right", padx=(0, 10))
-        row_widgets[spec.name] = (tile, ilbl, dlbl, sw)
-        sep = tk.Frame(row, bg="#20272f", height=1); sep.pack(fill="x", padx=12)
+        sw.pack(side="right", padx=(8, 0))
+        switch_widgets[spec.name] = sw
+        RoundedButton(line, "Test", make_test(spec),
+                      icon=ic("play", C["text_muted"], theme.ICON["action"]),
+                      bg=C["bg_card"]).pack(side="right")
+        row_widgets[spec.name] = (tile, dlbl)
+        if not last:
+            tk.Frame(row, bg="#20272f", height=1).pack(fill="x", padx=12)
         return row
 
     def group_card(parent, title, specs):
         tk.Label(parent, text=title.upper(), bg=C["bg_base"], fg=C["text_muted"],
-                 font=f_small).pack(anchor="w", padx=14, pady=(10, 6))
-        card = tk.Frame(parent, bg=C["bg_card"], highlightthickness=1,
-                        highlightbackground=C["stroke"])
-        card.pack(fill="x", padx=12)
-        for s in specs:
-            effect_row(card, s)
+                 font=f_small).pack(anchor="w", padx=16, pady=(12, 6))
+        card = RoundedFrame(parent, radius=10, padx=0, pady=0)
+        card.pack(fill="x", padx=12, pady=(0, 2))
+        for i, s in enumerate(specs):
+            effect_row(card.inner, s, last=(i == len(specs) - 1))
 
     for gid, gtitle in effectspec.GROUPS:
         group_card(page_effects, gtitle, effectspec.specs_in_group(gid))
 
     # ============== DEVICE TAB ==============
     def card(parent):
-        c = tk.Frame(parent, bg=C["bg_card"], highlightthickness=1,
-                     highlightbackground=C["stroke"])
+        c = RoundedFrame(parent, radius=10, padx=12, pady=12)
         c.pack(fill="x", padx=12, pady=(0, 8))
-        inner = tk.Frame(c, bg=C["bg_card"]); inner.pack(fill="x", padx=12, pady=12)
-        return inner
+        return c.inner
 
     tk.Label(page_device, text="", bg=C["bg_base"]).pack(pady=(4, 0))
     dev_card = card(page_device)
     dev_top = tk.Frame(dev_card, bg=C["bg_card"]); dev_top.pack(fill="x")
-    dtile = tk.Frame(dev_top, bg=C["bg_subtle"], width=34, height=34); dtile.pack(side="left")
-    dtile.pack_propagate(False)
-    dil = tk.Label(dtile, image=ic("joystick", C["text"], 18), bg=C["bg_subtle"])
-    dil.image = ic("joystick", C["text"], 18); dil.place(relx=0.5, rely=0.5, anchor="center")
+    dtile = RoundedTile(dev_top, ic("joystick", C["text"], 18), size=34, radius=8,
+                        fill=C["bg_subtle"], bg=C["bg_card"])
+    dtile.pack(side="left")
     dev_name = type(ctrl.stick).__name__
     try:
         dev_name = ctrl.stick.capabilities.name
@@ -317,10 +313,11 @@ def run_gui(app_file):
         tk.Label(hud_card, text="ADVANCED", bg=C["bg_card"], fg=C["text_muted"],
                  font=f_small).pack(anchor="w", pady=(2, 4))
         adv = tk.Frame(hud_card, bg=C["bg_card"]); adv.pack(fill="x")
-        FlatButton(adv, "Set Region", lambda: calibrate_hud(), bg=C["bg_card"]).pack(side="left")
-        FlatButton(adv, "Re-learn HUD", lambda: ctrl.calibrate_detector(),
-                   bg=C["bg_card"]).pack(side="left", padx=6)
-        rec_btn = FlatButton(adv, "Record 30s", lambda: ctrl.start_record(), bg=C["bg_card"])
+        RoundedButton(adv, "Set Region", lambda: calibrate_hud(),
+                      bg=C["bg_card"]).pack(side="left")
+        RoundedButton(adv, "Re-learn HUD", lambda: ctrl.calibrate_detector(),
+                      bg=C["bg_card"]).pack(side="left", padx=6)
+        rec_btn = RoundedButton(adv, "Record 30s", lambda: ctrl.start_record(), bg=C["bg_card"])
         rec_btn.pack(side="left")
         refs["rec_btn"] = rec_btn
     else:
@@ -402,7 +399,8 @@ def run_gui(app_file):
             state[f"en_{name}"] = bool(saved[name])
         if name in enable_vars:
             enable_vars[name].set(state.get(f"en_{name}", True))
-            row_widgets[name][3].refresh()
+            if name in switch_widgets:
+                switch_widgets[name].refresh()
     callsign_var.set(state.get("callsign", ""))
     en_hud.set(state["hud_on"])
     if _HUD:
@@ -432,13 +430,11 @@ def run_gui(app_file):
         # live gun-firing row highlight
         gname = "gun"
         if gname in row_widgets:
-            tile, ilbl, dlbl, _sw = row_widgets[gname]
+            tile, dlbl = row_widgets[gname]
             firing = bool(state.get("firing_gun")) and state.get("en_gun", True)
-            tile.configure(bg=("#2a1a0c" if firing else C["bg_subtle"]))
             col = C["accent"] if firing else C["text_muted"]
-            ilbl.configure(image=ic("crosshair", col, theme.ICON["row"]),
-                           bg=("#2a1a0c" if firing else C["bg_subtle"]))
-            ilbl.image = ic("crosshair", col, theme.ICON["row"])
+            tile.set(image=ic("crosshair", col, theme.ICON["row"]),
+                     fill=("#2a1a0c" if firing else C["bg_subtle"]))
             dlbl.configure(text="firing now" if firing else "cannon / MG",
                            fg=C["accent"] if firing else C["text_muted"])
         if _HUD:

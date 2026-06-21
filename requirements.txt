@@ -4,6 +4,7 @@
 numpy>=1.24
 winsdk>=1.0.0b10
 tksvg>=0.7          # render vendored Lucide SVG icons to Tk PhotoImages (UI)
+pillow>=10.0       # rounded-rectangle card backgrounds (UI)
 
 # Build-time only (packaging the standalone app):
 #   pip install pyinstaller
