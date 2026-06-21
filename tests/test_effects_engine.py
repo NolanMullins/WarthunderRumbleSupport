@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from winwinghaptics.effects import library                 # noqa: E402
 from winwinghaptics.effects.engine import EffectsEngine    # noqa: E402
+from winwinghaptics.effects.renderer import StreamingRenderer  # noqa: E402
 from winwinghaptics.hardware import WinwingUrsaMinor        # noqa: E402
 
 
@@ -36,14 +37,19 @@ def _to_native(level):
 
 def test_every_effect_round_trips_to_original_native():
     for name, expected in EXPECTED_NATIVE.items():
-        natives = [_to_native(level) for level, _ms in library.EFFECTS[name]["segments"]]
+        natives = [_to_native(seg.level) for seg in library.EFFECTS[name].segments]
         assert natives == expected, name
 
 
 def test_durations_unchanged():
     # the normalization touched levels only, never timings
-    assert [ms for _l, ms in library.EFFECTS["missile"]["segments"]] == \
+    assert [seg.duration_ms for seg in library.EFFECTS["missile"].segments] == \
         [360, 40, 70, 30, 55, 35, 50, 40, 45, 45, 40]
+
+
+def test_effect_duration_is_segment_sum():
+    eff = library.EFFECTS["missile"]
+    assert eff.duration_ms == sum(seg.duration_ms for seg in eff.segments)
 
 
 def test_gun_level_maps_to_135():
@@ -81,3 +87,24 @@ def test_engine_emits_via_set_level():
     time.sleep(0.2)            # let the one-shot thread finish
     assert 160 in dev.levels   # the flare level was emitted
     assert dev.levels[-1] == 0  # motor left quiet at the end
+
+
+def test_streaming_renderer_plays_segment_levels_then_zero():
+    dev = _FakeDevice()
+    r = StreamingRenderer(dev)
+    r.render(library.EFFECTS["flare"])     # synchronous, single 45 ms segment at 160
+    assert 160 in dev.levels
+    assert dev.levels[-1] == 0
+
+
+def test_streaming_renderer_stops_when_signalled():
+    dev = _FakeDevice()
+    r = StreamingRenderer(dev)
+    # is_stopped True from the start: no segment levels emitted, only the final quiet write.
+    r.render(library.EFFECTS["missile"], is_stopped=lambda: True)
+    assert dev.levels == [0]
+
+
+def test_engine_uses_streaming_renderer_by_default():
+    eng = EffectsEngine(_FakeDevice())
+    assert isinstance(eng.renderer, StreamingRenderer)

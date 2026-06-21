@@ -5,21 +5,24 @@ effects (missile/rocket/bomb/flare/kill/hit/death) run on a short worker thread 
 PRIORITY of the motor while playing, so their strong envelope is never stomped by the gun
 rumble; when a one-shot ends, the gun rumble resumes if the trigger is still held.
 
-Behavior is a faithful transcription of the original Effects class: same heartbeat cadence,
-same priority arbitration, same per-effect timing (sourced from effects.library). Output is now
-device-independent: the engine drives the device via the normalized set_level(0.0-1.0) interface
-(not the legacy native vib()), so any HapticDevice backend works. On the Winwing the normalized
-levels map back to the original 0-255 values exactly, so felt output is unchanged.
+The engine orchestrates (heartbeat, gun sustain, priority arbitration) but no longer hardcodes
+how an effect is played: it asks the device's renderer to render an Effect descriptor (see
+effects.model / effects.renderer). The default StreamingRenderer streams normalized levels via
+set_level(0.0-1.0), so any HapticDevice works and a pattern-upload device can supply its own
+renderer. On the Winwing the normalized levels map back to the original 0-255 values exactly, so
+felt output is unchanged.
 """
 import threading
 import time
 
-from .library import EFFECTS, GUN_LEVEL
+from .library import get_effect, GUN_LEVEL
+from .renderer import renderer_for
 
 
 class EffectsEngine:
     def __init__(self, device, logfn=lambda s: None):
         self.stick = device                # a HapticDevice; driven via set_level(0.0-1.0)
+        self.renderer = renderer_for(device)  # per-device playback strategy (streaming by default)
         self.log = logfn
         self._stop = threading.Event()
         self._hb = None
@@ -74,12 +77,6 @@ class EffectsEngine:
         """Call repeatedly while weapon2==1; keeps the rumble alive `dur` seconds."""
         self._gun_until = max(self._gun_until, time.time() + dur)
 
-    def _hold(self, level, ms):
-        end = time.time() + ms / 1000.0
-        while time.time() < end and not self._stop.is_set():
-            self.stick.set_level(level)
-            time.sleep(0.003)
-
     def _run_oneshot(self, fn):
         def wrap():
             with self._oneshot_lock:
@@ -92,19 +89,13 @@ class EffectsEngine:
         threading.Thread(target=wrap, daemon=True).start()
 
     def play(self, name):
-        """Play a named one-shot effect from the library (data-driven)."""
-        eff = EFFECTS.get(name)
+        """Play a named one-shot Effect from the library via the device's renderer."""
+        eff = get_effect(name)
         if not eff:
             return
-        if eff["log"]:
-            self.log(eff["log"])
-        segments = eff["segments"]
-
-        def seq():
-            for level, ms in segments:
-                self._hold(level, ms)
-            self.stick.set_level(0.0)
-        self._run_oneshot(seq)
+        if eff.log:
+            self.log(eff.log)
+        self._run_oneshot(lambda: self.renderer.render(eff, self._stop.is_set))
 
     # --- named convenience triggers (kept for the existing call sites) ---
     def missile(self):
