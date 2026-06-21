@@ -161,7 +161,12 @@ class WindowsUpdater:
 
         Aborts (returns False, no swap) if unsupported, there's no asset, the download/extract fails,
         or the staged contents don't contain the app exe (a malformed/wrong asset). On success it
-        calls `_exit` (default sys.exit(0)) so the locked files are released for the helper.
+        invokes `_exit` so this process releases its file locks and the helper can swap + relaunch.
+
+        `_exit` MUST actually terminate the process. The default is sys.exit(0), which is only valid
+        on the MAIN thread; a GUI caller running this on a worker thread must pass an `_exit` that
+        marshals a real shutdown/exit onto the main thread (sys.exit() in a worker only ends the
+        worker, leaving the helper waiting forever).
         """
         if not self.is_supported():
             return False

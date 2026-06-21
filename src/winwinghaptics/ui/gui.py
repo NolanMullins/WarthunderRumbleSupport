@@ -158,11 +158,26 @@ def run_gui(app_file):
             set_update_status("Downloading update…")
             log(f"Downloading update v{info.version}…", "fx")
 
+            def finish_exit():
+                # On the Tk MAIN thread: release the device + close the window so the helper .bat
+                # (which waits for this process to exit) can swap the folder and relaunch. The
+                # worker thread cannot exit the process itself -- sys.exit() there only ends the
+                # worker -- so update() marshals the exit here.
+                set_update_status("Installing… the app will restart.")
+                log("Update downloaded — restarting to install…", "fx")
+                try:
+                    ctrl.shutdown()
+                except Exception:
+                    pass
+                root.destroy()
+
             def work():
                 ok = _updater.update(
-                    info, on_progress=lambda r, t: root.after(
+                    info,
+                    on_progress=lambda r, t: root.after(
                         0, lambda: set_update_status(
-                            "Downloading… %d%%" % (int(r * 100 / t) if t else 0))))
+                            "Downloading… %d%%" % (int(r * 100 / t) if t else 0))),
+                    _exit=lambda: root.after(0, finish_exit))
                 if not ok:
                     update_state["busy"] = False
                     root.after(0, lambda: (set_update_status("Update failed — opening Releases"),

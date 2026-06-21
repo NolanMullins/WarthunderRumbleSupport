@@ -127,6 +127,45 @@ def test_update_noop_when_unsupported(tmp_path):
     assert ok is False and called["exit"] is False
 
 
+def test_update_success_invokes_exit_once(tmp_path, monkeypatch):
+    # On a (simulated) supported build, update() must call _exit exactly once after launching the
+    # helper, so the GUI's main-thread exit hook fires and the process can be replaced.
+    app = tmp_path / "app"; app.mkdir()
+    exe = app / "WinwingHaptics.exe"; exe.write_bytes(b"MZ")
+    up = WindowsUpdater(app_dir=str(app), exe_path=str(exe))
+    monkeypatch.setattr(up, "is_supported", lambda: True)
+    monkeypatch.setattr(up, "download", lambda url, dest, on_progress=None: dest)
+    # stage returns a build root that DOES contain the exe, so the guard passes
+
+    def fake_stage(zip_path, staging_dir):
+        os.makedirs(staging_dir, exist_ok=True)
+        with open(os.path.join(staging_dir, "WinwingHaptics.exe"), "wb") as fh:
+            fh.write(b"MZ")
+        return staging_dir
+    monkeypatch.setattr(up, "stage", fake_stage)
+    monkeypatch.setattr(up, "_launch_helper", lambda helper: None)
+    calls = {"n": 0}
+    ok = up.update(type("I", (), {"asset_url": "https://e/x.zip", "asset_name": "x.zip"})(),
+                   _exit=lambda: calls.__setitem__("n", calls["n"] + 1))
+    assert ok is True
+    assert calls["n"] == 1
+
+
+def test_update_aborts_when_staged_lacks_exe(tmp_path, monkeypatch):
+    app = tmp_path / "app"; app.mkdir()
+    exe = app / "WinwingHaptics.exe"; exe.write_bytes(b"MZ")
+    up = WindowsUpdater(app_dir=str(app), exe_path=str(exe))
+    monkeypatch.setattr(up, "is_supported", lambda: True)
+    monkeypatch.setattr(up, "download", lambda url, dest, on_progress=None: dest)
+    # staged dir WITHOUT the exe -> must abort and NOT exit
+    monkeypatch.setattr(up, "stage", lambda z, s: (os.makedirs(s, exist_ok=True) or s))
+    monkeypatch.setattr(up, "_launch_helper", lambda helper: None)
+    called = {"exit": False}
+    ok = up.update(type("I", (), {"asset_url": "https://e/x.zip", "asset_name": "x.zip"})(),
+                   _exit=lambda: called.__setitem__("exit", True))
+    assert ok is False and called["exit"] is False
+
+
 def test_helper_script_contains_key_fields(tmp_path):
     up = WindowsUpdater(app_dir=str(tmp_path / "app"),
                         exe_path=str(tmp_path / "app" / "WinwingHaptics.exe"))
