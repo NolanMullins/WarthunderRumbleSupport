@@ -54,5 +54,10 @@ Weapon fires come from reading the HUD ammo counters: when a counter drops, that
 A noise filter rejects misreads so only real shots trigger. Gun input and the kill/death feed
 come from War Thunder's local telemetry. All of it is sent to the controller over USB HID.
 
-Developer and build details are in the `tests/` folder and the source under
-`src/winwinghaptics/`.
+Developer docs:
+
+- [docs/HardSupport.md](docs/HardSupport.md) - adding support for a new controller
+- [docs/Build.md](docs/Build.md) - building the standalone exe and the CLI flags
+- `tests/` - the detection test suite
+
+Source lives under `src/winwinghaptics/`.
