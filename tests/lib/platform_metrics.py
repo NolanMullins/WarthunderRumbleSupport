@@ -133,17 +133,31 @@ def tracker_fire_frames(clip, gt, det=None):
     return fired
 
 
+# How many frames apart two fires of the same weapon still feel like ONE buzz. For the gun
+# (rapid) the rumble is SUSTAINED via TemporalTracker.is_firing(within=14), so per-step gun
+# ticks <14 frames apart are a single continuous rumble, not separate buzzes. Discrete/counter
+# play one short animation per round but overlapping rounds merge in the effect, so a tight
+# cluster is still one felt burst. This is what turns the raw per-frame false_fire count (which
+# over-counts every extra gun tick) into the EXPERIENTIAL count the user actually feels.
+_MERGE_GAP = {"rapid": 14, "counter": 3, "discrete": 3}
+
+
 def score_events(clip, gt, det=None):
     det = det or D.redetect(clip)
     fired = tracker_fire_frames(clip, gt, det)
+    classes = {w: H.WEAPON_CLASS.get(w, "discrete") for w in gt.weapons}
     hits = misses = false_fires = 0
+    false_eps = 0
     miss_list = []
     false_list = []
+    false_ep_list = []
     for wp in gt.weapons:
         zones = _episodes_from_segments(gt, wp)
         allowed = set()
+        spans = []
         for zs, ze, _o, _n in zones:
             allowed.update(range(zs - ASSOC, ze + ASSOC + 1))
+            spans.append((zs - ASSOC, ze + ASSOC))
         # hits / misses per episode (skip episodes whose onset is in an excluded range)
         for zs, ze, old, new in zones:
             if gt.is_excluded(zs):
@@ -154,19 +168,38 @@ def score_events(clip, gt, det=None):
             else:
                 misses += 1
                 miss_list.append((zs, wp, old, new))
-        # false fires: events outside any fire zone (excluded frames don't count)
-        for f in fired.get(wp, []):
-            if f not in allowed and not gt.is_excluded(f):
+        # raw false fires: individual fire frames outside any fire zone (per-frame view)
+        fs = [f for f in sorted(fired.get(wp, [])) if not gt.is_excluded(f)]
+        for f in fs:
+            if f not in allowed:
                 false_fires += 1
                 false_list.append((f, wp))
+        # EXPERIENTIAL false fires: cluster this weapon's fires into felt buzzes (merge gun
+        # continuous-rumble ticks / overlapping rounds), then count a cluster as a phantom only
+        # if it overlaps NO real fire zone. This is the experience-denominated false-positive.
+        gap = _MERGE_GAP.get(classes[wp], 3)
+        clusters = []
+        for f in fs:
+            if clusters and f - clusters[-1][-1] <= gap:
+                clusters[-1].append(f)
+            else:
+                clusters.append([f])
+        for cl in clusters:
+            a, b = cl[0], cl[-1]
+            if not any(not (b < lo or a > hi) for lo, hi in spans):
+                false_eps += 1
+                false_ep_list.append((a, b, wp))
     total = hits + misses
     return {
         "events": total,
         "hits": hits,
         "misses": misses,
         "false_fires": false_fires,
+        "false_episodes": false_eps,
         "event_miss_rate": (misses / total) if total else None,
         "event_false_per_event": (false_fires / total) if total else None,
+        "false_episode_rate": (false_eps / total) if total else None,
         "_miss_list": miss_list,
         "_false_list": false_list,
+        "_false_ep_list": false_ep_list,
     }

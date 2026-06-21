@@ -55,13 +55,14 @@ def run(use_cache=True):
 
 def aggregate(results):
     pc = mr = fr = sv = ms = 0
-    ev = hit = miss = false = 0
+    ev = hit = miss = false = false_ep = 0
     calib_missing = []
     for r in results:
         rv = r["rows"]; e = r["events"]
         pc += rv["present_cells"]; mr += rv["missed_row"]
         fr += rv["false_row"]; sv += rv["scored_value_cells"]; ms += rv["misread"]
         ev += e["events"]; hit += e["hits"]; miss += e["misses"]; false += e["false_fires"]
+        false_ep += e.get("false_episodes", 0)
         for w in rv["calib_missing_rows"]:
             calib_missing.append(f"{r['key'].split('/')[-1]}:{w}")
     return {
@@ -71,7 +72,9 @@ def aggregate(results):
         "scored_value_cells": sv, "misread": ms,
         "misread_rate": (ms / sv) if sv else None,
         "events": ev, "hits": hit, "misses": miss, "false_fires": false,
+        "false_episodes": false_ep,
         "event_miss_rate": (miss / ev) if ev else None,
+        "false_episode_rate": (false_ep / ev) if ev else None,
         "calib_missing_rows": calib_missing,
     }
 
@@ -85,6 +88,8 @@ def snapshot(results):
             "misread_rate": r["rows"]["misread_rate"],
             "event_miss_rate": r["events"]["event_miss_rate"],
             "event_false_fires": r["events"]["false_fires"],
+            "false_episodes": r["events"].get("false_episodes", 0),
+            "false_episode_rate": r["events"].get("false_episode_rate"),
         }
     return {"detector_hash": D.detector_hash(),
             "aggregate": aggregate(verified),
@@ -107,7 +112,7 @@ def print_clip(r, gated):
           f"({rv['misread']}/{rv['scored_value_cells']})")
     print(f"     EVENT miss={_rate(e['event_miss_rate'])} "
           f"(hits={e['hits']} misses={e['misses']} of {e['events']}; "
-          f"false_fires={e['false_fires']})")
+          f"false_fires={e['false_fires']} -> {e.get('false_episodes', 0)} felt)")
     if e["_miss_list"]:
         print(f"           missed events: " +
               ", ".join(f"f{z}:{w} {o}->{n}" for z, w, o, n in e["_miss_list"][:8]))
@@ -151,7 +156,7 @@ def main():
           f"({agg['misread']}/{agg['scored_value_cells']})")
     print(f"  event_miss_rate : {_rate(agg['event_miss_rate'])} "
           f"(misses={agg['misses']} of {agg['events']} events; "
-          f"false_fires={agg['false_fires']})")
+          f"false_fires={agg['false_fires']} -> {agg['false_episodes']} felt phantoms)")
     if agg["calib_missing_rows"]:
         print(f"  WHOLE-ROW calib misses: {agg['calib_missing_rows']}")
     print(f"\n  (verified-only aggregate: missed_row={_rate(vagg['missed_row_rate'])}, "
@@ -176,7 +181,7 @@ def main():
     ok = True
     b = baseline["aggregate"]
     c = vagg
-    for name in ("missed_row_rate", "misread_rate", "event_miss_rate"):
+    for name in ("missed_row_rate", "misread_rate", "event_miss_rate", "false_episode_rate"):
         cur, base = c.get(name), b.get(name)
         if base is None and cur is None:
             print(f"  {name}: n/a"); continue
