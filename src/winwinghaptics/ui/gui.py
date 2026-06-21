@@ -14,6 +14,8 @@ tokens; icons are vendored Lucide SVGs rendered by ui.icons.
 import os
 import sys
 import ctypes
+import threading
+import webbrowser
 
 from .. import config
 from ..app import AppController
@@ -21,6 +23,10 @@ from . import theme
 from . import effectspec
 from .icons import IconLoader
 from .widgets import ToggleSwitch, RoundedButton, RoundedFrame, RoundedTile, ScrollFrame
+from .. import __version__
+from ..update import UpdateChecker
+from ..update.checker import releases_page
+from ..update.installer import WindowsUpdater
 
 C = theme.COLOR
 
@@ -114,8 +120,99 @@ def run_gui(app_file):
     htext = tk.Frame(header, bg=C["bg_base"]); htext.pack(side="left")
     tk.Label(htext, text="Winwing Haptics", bg=C["bg_base"], fg=C["text"],
              font=f_title).pack(anchor="w")
-    tk.Label(htext, text="War Thunder → controller rumble", bg=C["bg_base"],
+    tk.Label(htext, text=f"War Thunder → controller rumble · v{__version__}", bg=C["bg_base"],
              fg=C["text_muted"], font=f_sub).pack(anchor="w")
+
+    # ---------------- Update banner (hidden until an update is found) ----------------
+    update_state = {"info": None, "busy": False, "status": ""}
+    banner = RoundedFrame(root, radius=9, fill="#2a1a0c", outline=C["accent"], padx=12, pady=9)
+    banner_lbl = tk.Label(banner.inner, text="", bg="#2a1a0c", fg=C["accent"], font=f_body,
+                          image=ic("download", C["accent"], 16), compound="left", padx=0,
+                          cursor="hand2")
+    banner_lbl.image = ic("download", C["accent"], 16)
+    banner_lbl.pack(side="left", padx=(2, 8))
+    banner_btns = tk.Frame(banner.inner, bg="#2a1a0c"); banner_btns.pack(side="right")
+
+    def show_banner():
+        info = update_state["info"]
+        if not info or not info.available:
+            banner.pack_forget(); return
+        banner_lbl.config(text="  Update available — v%s" % info.version)
+        banner.pack(fill="x", padx=12, pady=(0, 8), after=header)
+
+    def hide_banner():
+        update_state["info"] = None
+        banner.pack_forget()
+
+    # update orchestration (shared by the banner and the Device-tab Updates card)
+    _updater = WindowsUpdater()
+
+    def apply_update():
+        """Apply the available update: self-replace+relaunch on a frozen Windows build, else open
+        the Releases page so the user can download it."""
+        info = update_state["info"]
+        if not info:
+            return
+        if _updater.is_supported() and info.asset_url:
+            update_state["busy"] = True
+            set_update_status("Downloading update…")
+            log(f"Downloading update v{info.version}…", "fx")
+
+            def work():
+                ok = _updater.update(
+                    info, on_progress=lambda r, t: root.after(
+                        0, lambda: set_update_status(
+                            "Downloading… %d%%" % (int(r * 100 / t) if t else 0))))
+                if not ok:
+                    update_state["busy"] = False
+                    root.after(0, lambda: (set_update_status("Update failed — opening Releases"),
+                                           log("Update failed; opening Releases page.", "fx"),
+                                           webbrowser.open(info.html_url)))
+            threading.Thread(target=work, daemon=True).start()
+        else:
+            webbrowser.open(info.html_url or releases_page())
+            log("Opened the Releases page to download the update.", "fx")
+
+    def view_notes():
+        info = update_state["info"]
+        webbrowser.open((info.html_url if info else None) or releases_page())
+
+    RoundedButton(banner_btns, "Update", apply_update, accent=True, bg="#2a1a0c",
+                  icon=ic("download", C["accent_ink"], 12)).pack(side="left")
+    _close = tk.Label(banner_btns, image=ic("x", C["text_muted"], 14), bg="#2a1a0c",
+                      cursor="hand2")
+    _close.image = ic("x", C["text_muted"], 14)
+    _close.pack(side="left", padx=(8, 0))
+    _close.bind("<Button-1>", lambda _e: hide_banner())
+    banner_lbl.bind("<Button-1>", lambda _e: view_notes())
+
+    def set_update_status(text):
+        update_state["status"] = text
+        try:
+            upd_status_lbl.config(text=text)
+        except Exception:
+            pass
+
+    def run_update_check(manual=False):
+        """Check GitHub Releases on a background thread; render the banner/card on the UI thread."""
+        if update_state["busy"]:
+            return
+        if manual:
+            set_update_status("Checking…")
+
+        def work():
+            info = UpdateChecker().check()
+            def render():
+                update_state["info"] = info
+                if info is None:
+                    set_update_status("Couldn't check (offline?)" if manual else "")
+                elif info.available:
+                    set_update_status(f"Update available: v{info.version}")
+                    show_banner()
+                else:
+                    set_update_status("You're on the latest version.")
+            root.after(0, render)
+        threading.Thread(target=work, daemon=True).start()
 
     # ---------------- Status strip ----------------
     strip = tk.Frame(root, bg=C["bg_base"]); strip.pack(fill="x", padx=12, pady=(0, 8))
@@ -267,6 +364,24 @@ def run_gui(app_file):
     dev_state_lbl = tk.Label(dtxt, text="searching…", bg=C["bg_card"], fg=C["text_muted"],
                              font=f_small)
     dev_state_lbl.pack(anchor="w")
+
+    # updates card
+    upd_card = card(page_device)
+    upd_head = tk.Frame(upd_card, bg=C["bg_card"]); upd_head.pack(fill="x")
+    tk.Label(upd_head, text="UPDATES", bg=C["bg_card"], fg=C["text_muted"],
+             font=f_small).pack(side="left")
+    tk.Label(upd_head, text=f"v{__version__}", bg=C["bg_card"], fg=C["text_muted"],
+             font=f_small).pack(side="right")
+    upd_status_lbl = tk.Label(upd_card, text="", bg=C["bg_card"], fg=C["text_muted"],
+                              font=f_small, anchor="w", wraplength=360, justify="left")
+    upd_status_lbl.pack(anchor="w", pady=(4, 6))
+    upd_btns = tk.Frame(upd_card, bg=C["bg_card"]); upd_btns.pack(fill="x")
+    RoundedButton(upd_btns, "Check for updates", lambda: run_update_check(manual=True),
+                  icon=ic("refresh-cw", C["text_muted"], 12), bg=C["bg_card"]).pack(side="left")
+    RoundedButton(upd_btns, "Update now", apply_update, accent=True, bg=C["bg_card"],
+                  icon=ic("download", C["accent_ink"], 12)).pack(side="left", padx=6)
+    if update_state.get("status"):
+        upd_status_lbl.config(text=update_state["status"])
 
     # callsign
     cs_card = card(page_device)
@@ -458,6 +573,8 @@ def run_gui(app_file):
     ctrl.start_workers()
     refresh()
     _drain_log()
+    # check for updates shortly after boot (background thread; banner appears if one is found)
+    root.after(1500, lambda: run_update_check(manual=False))
 
     def on_close():
         ctrl.shutdown(); root.destroy()

@@ -7,3 +7,7 @@ Package layout (refactor in progress):
 The legacy single-file app (src/winwing_haptics.py) is being decomposed into this package
 phase by phase; each phase is gated green by the tests/ A/B suite.
 """
+
+# Single source of truth for the app version. The auto-updater compares this against the latest
+# GitHub release tag; bump it for each release (and tag the release `v<this>`).
+__version__ = "0.1.0"
