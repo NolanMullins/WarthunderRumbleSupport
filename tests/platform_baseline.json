@@ -6,21 +6,21 @@
     "missed_row_rate": 0.033783137142310266,
     "false_row": 9,
     "scored_value_cells": 10096,
-    "misread": 378,
-    "misread_rate": 0.037440570522979395,
-    "events": 87,
-    "hits": 81,
-    "misses": 6,
-    "false_fires": 15,
-    "event_miss_rate": 0.06896551724137931,
+    "misread": 317,
+    "misread_rate": 0.03139857369255151,
+    "events": 90,
+    "hits": 85,
+    "misses": 5,
+    "false_fires": 11,
+    "event_miss_rate": 0.05555555555555555,
     "calib_missing_rows": []
   },
   "per_recording": {
     "hud_rec_20260618_101336/hud_rec_20260618_101336": {
       "missed_row_rate": 0.00625,
-      "misread_rate": 0.07686932215234102,
-      "event_miss_rate": 0.05,
-      "event_false_fires": 8
+      "misread_rate": 0.03424178895877009,
+      "event_miss_rate": 0.0,
+      "event_false_fires": 4
     },
     "hud_rec_20260618_111503/hud_rec_20260618_111503": {
       "missed_row_rate": 0.05362116991643454,
