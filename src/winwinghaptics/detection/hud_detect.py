@@ -708,11 +708,27 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
             if support >= max(3, (n_rows + 1) // 2):
                 count_x = cx_cand
     out = {}
+    # Expected on-screen y for every calibrated row at the current shift -- used to reject a
+    # count band that actually belongs to a NEIGHBOURING weapon. When a countermeasure row is
+    # empty (count 0), the HUD shows no number on its line, so the nearest count-ink band is the
+    # row ABOVE/BELOW; the locator would otherwise lock onto it and read that neighbour's value
+    # (e.g. FLR=0 reading the AAM number above it -> FLR misread as AAM's count). A band is only
+    # this weapon's if THIS row is the closest calibrated row to it.
+    row_ys = {w: yy + shift for w, yy in calib.rows.items()}
+    claim_tol = max(6, int(calib.line_pitch * 0.5))
     for wp, y0 in calib.rows.items():
         yc0 = y0 + shift
         # Candidate row positions = count-ink bands near the geometric row (count ink is
         # bright/reliable). Verify each by its LABEL token; the best-labelled band wins.
         cands = _count_bands(tn, yc0, calib, win=13, cx=count_x)
+        # Drop bands that belong to a neighbouring row: a band claimed by THIS weapon must be
+        # closer to its own row than to any other weapon's row (within a half-pitch tolerance).
+        own = []
+        for cy in cands:
+            nearest = min(row_ys, key=lambda w: abs(row_ys[w] - cy))
+            if nearest == wp or abs(cy - yc0) <= claim_tol:
+                own.append(cy)
+        cands = own
         best_cy, best_s = None, -1.0
         quick = (-1, 0, 1)
         wide = (-6, -5, -4, -3, -2, 2, 3, 4, 5, 6)
