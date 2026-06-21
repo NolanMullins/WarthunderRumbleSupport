@@ -7,6 +7,7 @@ device for now (the effects engine still uses them); they will be migrated to se
 the effects phase. Capabilities lets the engine adapt (e.g. whether a heartbeat is needed).
 """
 import abc
+import time
 from dataclasses import dataclass
 
 
@@ -46,3 +47,24 @@ class HapticDevice(abc.ABC):
     @abc.abstractmethod
     def set_level(self, level: float) -> bool:
         """Set vibration intensity from a normalized 0.0-1.0 value."""
+
+    # ---- keep-alive (device-owned cadence) ----
+    # The engine calls these every loop tick; the DEVICE decides whether and how often to re-arm
+    # based on its Capabilities, so the heartbeat interval is no longer hardcoded in the engine.
+    # Devices that don't need a heartbeat (needs_heartbeat=False) make these no-ops.
+    def start_keepalive(self) -> None:
+        """Arm now and reset the heartbeat clock. Called when output starts."""
+        if self.capabilities.needs_heartbeat:
+            self.arm()
+        self._last_arm = time.time()
+
+    def keepalive(self, now: float = None) -> None:
+        """Re-arm if the device's heartbeat interval has elapsed since the last arm."""
+        caps = self.capabilities
+        if not caps.needs_heartbeat:
+            return
+        if now is None:
+            now = time.time()
+        if now - getattr(self, "_last_arm", 0.0) >= caps.heartbeat_interval:
+            self.arm()
+            self._last_arm = now

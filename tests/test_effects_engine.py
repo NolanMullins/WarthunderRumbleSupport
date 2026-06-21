@@ -108,3 +108,52 @@ def test_streaming_renderer_stops_when_signalled():
 def test_engine_uses_streaming_renderer_by_default():
     eng = EffectsEngine(_FakeDevice())
     assert isinstance(eng.renderer, StreamingRenderer)
+
+
+# ---- device-owned keep-alive ----
+from winwinghaptics.hardware.base import HapticDevice, Capabilities   # noqa: E402
+
+
+class _KeepaliveDevice(HapticDevice):
+    """Minimal HapticDevice that just counts arm() calls, to test the base keepalive cadence."""
+    def __init__(self, needs_heartbeat=True, interval=2.5):
+        self._caps = Capabilities(name="test", needs_heartbeat=needs_heartbeat,
+                                  heartbeat_interval=interval)
+        self.arms = 0
+
+    @property
+    def capabilities(self):
+        return self._caps
+
+    def open(self):
+        return True
+
+    def close(self):
+        pass
+
+    def is_open(self):
+        return True
+
+    def arm(self):
+        self.arms += 1
+        return True
+
+    def set_level(self, level):
+        return True
+
+
+def test_keepalive_rearms_on_interval():
+    d = _KeepaliveDevice(interval=2.5)
+    d.start_keepalive()            # arms immediately
+    assert d.arms == 1
+    d.keepalive(now=d._last_arm + 1.0)   # too soon -> no re-arm
+    assert d.arms == 1
+    d.keepalive(now=d._last_arm + 2.5)   # interval elapsed -> re-arm
+    assert d.arms == 2
+
+
+def test_keepalive_noop_when_not_needed():
+    d = _KeepaliveDevice(needs_heartbeat=False)
+    d.start_keepalive()
+    d.keepalive(now=10_000.0)
+    assert d.arms == 0             # device that doesn't need a heartbeat never arms

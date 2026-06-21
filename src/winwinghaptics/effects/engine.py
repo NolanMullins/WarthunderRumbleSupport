@@ -48,17 +48,18 @@ class EffectsEngine:
             pass
 
     def _hb_loop(self):
-        # arm immediately, then every 2.5s; also services the continuous gun rumble
+        # arm immediately, then on the device's own keep-alive cadence; also services the
+        # continuous gun rumble.
         try:
-            self.stick.arm()
+            self.stick.start_keepalive()
         except Exception:
             pass
-        last_arm = time.time()
         while not self._stop.is_set():
             now = time.time()
-            if now - last_arm >= 2.5:
-                self.stick.arm()
-                last_arm = now
+            try:
+                self.stick.keepalive(now)
+            except Exception:
+                pass
             # continuous gun rumble while active -- BUT a one-shot effect takes priority and
             # owns the motor while it plays. When it finishes, the gun rumble resumes if the
             # trigger is still held.
