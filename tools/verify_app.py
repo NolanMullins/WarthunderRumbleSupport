@@ -17,6 +17,7 @@ import sys
 import json
 import argparse
 import http.server
+import socketserver
 import urllib.parse
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -218,11 +219,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def _send(self, code, ctype, body):
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # client navigated away / aborted mid-response -- ignore, never crash the server
+            pass
 
     def _json(self, obj, code=200):
         self._send(code, "application/json", json.dumps(obj).encode("utf-8"))
@@ -283,7 +288,12 @@ def main():
         return
     print(f"Verifier on http://localhost:{args.port}  ({len(clips)} clips)")
     print("Feedback -> tests/feedback/<clip>.json   (Ctrl+C to stop)")
-    http.server.HTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
+
+    class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    _Server(("127.0.0.1", args.port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
