@@ -1,0 +1,153 @@
+name: Release
+
+# Build, smoke-test, and publish a WT Haptics release whenever a version tag (vX.Y.Z) is pushed.
+# A manual run (workflow_dispatch) does the full build + smoke test and uploads the zip as a
+# workflow artifact WITHOUT creating a release, so the pipeline itself can be exercised safely.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write          # required for `gh release create`
+
+jobs:
+  release:
+    runs-on: windows-latest    # Windows-only app (winsdk OCR, GDI capture, tksvg DLL)
+    steps:
+      - name: Checkout (full history for the on-main ancestry check)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the tag points at a commit on main
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          git fetch origin main --quiet
+          $tagSha = (git rev-parse HEAD).Trim()
+          git merge-base --is-ancestor $tagSha origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Tag commit $tagSha is not reachable from origin/main. Release tags must point at a commit merged into main."
+            exit 1
+          }
+          Write-Host "OK: tag commit is on main."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller pytest
+
+      - name: Verify tag matches package __version__
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'                       # e.g. v0.2.0
+          $ver = (python -c "import sys; sys.path.insert(0,'src'); import winwinghaptics; print(winwinghaptics.__version__)").Trim()
+          $expected = "v$ver"
+          if ($tag -ne $expected) {
+            Write-Error "Tag '$tag' does not match package __version__ '$ver' (expected tag '$expected'). Bump __version__ in src/winwinghaptics/__init__.py to match the tag before tagging."
+            exit 1
+          }
+          Write-Host "OK: tag $tag matches __version__ $ver"
+
+      - name: Run test suite
+        shell: pwsh
+        run: |
+          # Detection/calibration tests skipif(no recordings); the logic + Windows tests run.
+          python -m pytest tests/ -q
+
+      - name: Build (PyInstaller --onedir)
+        shell: pwsh
+        run: |
+          # Splat the args as an array so the (validated) build command needs no line-continuation
+          # chars. See docs/Build.md for why each flag is required.
+          $piArgs = @(
+            '--onedir', '--noconsole', '--name', 'WTHaptics',
+            '--distpath', 'dist_final', '--workpath', 'build', '--specpath', 'build',
+            '--paths', 'src',
+            '--icon', '../src/winwinghaptics/ui/assets/wt_haptics.ico',
+            '--collect-all', 'winsdk', '--collect-all', 'tksvg',
+            '--collect-submodules', 'winwinghaptics', '--collect-submodules', 'numpy',
+            '--add-data', '../src/winwinghaptics/ui/assets;winwinghaptics/ui/assets',
+            'run.py'
+          )
+          python -m PyInstaller @piArgs
+          if (-not (Test-Path dist_final/WTHaptics/WTHaptics.exe)) {
+            Write-Error "Build did not produce WTHaptics.exe"; exit 1
+          }
+
+      - name: Smoke-test the frozen exe
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path dist_final/WTHaptics/WTHaptics.exe).Path
+          $wd = Split-Path $exe
+          $resultFile = Join-Path $wd 'hudtest_result.txt'
+          Remove-Item -ErrorAction SilentlyContinue $resultFile
+          $p = Start-Process -FilePath $exe -ArgumentList '--hudtest' -WorkingDirectory $wd -PassThru
+          $p.WaitForExit(60000) | Out-Null
+          if (-not (Test-Path $resultFile)) {
+            Write-Error "Smoke test produced no result file -- the exe likely crashed at launch (bundling/import bug)."
+            exit 1
+          }
+          $result = (Get-Content $resultFile -Raw).Trim()
+          Write-Host "hudtest: $result"
+          if ($result -notmatch 'detector_ready=True') {
+            Write-Error "Frozen build failed readiness: detector_ready is not True."
+            exit 1
+          }
+          if ($result -notmatch 'ocr_ready=True') {
+            Write-Warning "ocr_ready is not True -- the OCR language pack may be absent on the CI runner. This is an environment limitation, not a build defect (end users' Windows ships the OCR engine)."
+          }
+          Write-Host "Smoke test passed (detector ready)."
+
+      - name: Package the build
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'push') {
+            $asset = "WTHaptics-${{ github.ref_name }}-win64.zip"
+          } else {
+            $ver = (python -c "import sys; sys.path.insert(0,'src'); import winwinghaptics; print(winwinghaptics.__version__)").Trim()
+            $asset = "WTHaptics-v$ver-dev-win64.zip"
+          }
+          Compress-Archive -Path dist_final/WTHaptics -DestinationPath $asset -CompressionLevel Optimal
+          Write-Host "Packaged $asset"
+          "ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload build artifact (manual runs -- no release)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WTHaptics-build
+          path: ${{ env.ASSET }}
+          retention-days: 14
+
+      - name: Create / update the GitHub release (tag pushes only)
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $asset = $env:ASSET
+          # Idempotent: if the release already exists (e.g. a re-run), swap the asset in;
+          # otherwise create it. A pre-release tag (contains '-', e.g. v0.2.0-rc1) is marked
+          # prerelease so the in-app updater (which skips prereleases) ignores it.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber
+            Write-Host "Updated existing release $tag with $asset"
+          } else {
+            $ghArgs = @($tag, $asset, '--title', "WT Haptics $tag", '--generate-notes')
+            if ($tag -match '-') { $ghArgs += '--prerelease' }
+            gh release create @ghArgs
+            Write-Host "Created release $tag with $asset"
+          }
