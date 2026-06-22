@@ -55,6 +55,16 @@ class AppController:
         self.HUD_CALIB = os.path.join(base_dir, config.HUD_CALIB_NAME)
         self.hud_available = HUD_AVAILABLE
 
+        # Flag the whole process as a background / efficiency workload (EcoQoS). On hybrid CPUs
+        # Windows then biases us onto efficiency cores, leaving the performance cores for the
+        # game. Best-effort: silently no-ops on older Windows. (The detection thread is also set
+        # to below-normal priority in hud_worker; together these keep us out of the game's way.)
+        try:
+            from . import priority
+            priority.apply_low_impact()
+        except Exception:
+            pass
+
         self.stick = select_device()
         self.effects = Effects(self.stick)
         self.wt = WarThunder()
@@ -344,6 +354,15 @@ class AppController:
     def hud_worker(self):
         if not self.hud_available:
             return
+        # Run the detection loop at BELOW_NORMAL priority so War Thunder (Normal/Above-Normal)
+        # always preempts it -- the haptics never steal CPU the game wants. Only THIS thread is
+        # de-prioritised; the UI thread stays at normal priority so the window stays responsive.
+        try:
+            from . import priority
+            if priority.lower_current_thread(True):
+                self.log("Detection running at low priority (won't steal CPU from the game).", "fx")
+        except Exception:
+            pass
         det = self.get_det()
         if det is None:
             self.state["hud_status"] = "unavailable"
