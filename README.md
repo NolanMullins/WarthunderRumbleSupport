@@ -6,6 +6,10 @@ controller vibration on supported hardware.
 Windows only. It reads the game's local telemetry and the on-screen HUD, and sends vibration
 to the controller over USB HID. No game files are touched.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="WT Haptics Effects tab" width="420">
+</p>
+
 ## Supported hardware
 
 | Device | Status |
@@ -32,21 +36,34 @@ so set your in-game callsign in the app.
 
 ## Usage
 
-An exe release is planned. For now, run from source on Windows (Python 3.10+, 64-bit):
+### Download (recommended)
+
+1. Grab the latest `WTHaptics-*-win64.zip` from the
+   [Releases page](https://github.com/NolanMullins/WarthunderRumbleSupport/releases/latest).
+2. Unzip it anywhere and run `WTHaptics.exe`. No Python needed.
+3. The app checks for updates on its own. When a newer release is out, an "Update available"
+   banner appears and it can update itself in place (Device tab, Updates).
+
+### Run from source
+
+Windows, Python 3.10+ (64-bit):
 
 ```powershell
 python -m pip install -r requirements.txt
 python run.py
 ```
 
-In the app:
+### First run
 
-1. Plug in the controller. The Joystick status goes green when it's found.
-2. Start War Thunder and get into a match. The War Thunder status goes green.
-3. Tick HUD auto-detect. It learns your HUD the first time it sees the weapon counters.
-4. Optionally set your callsign and pick which effects you want.
+1. Plug in the controller. The **Joystick** status goes green when it's found.
+2. Start War Thunder and get into a match. The **War Thunder** status goes green.
+3. On the **Effects** tab, switch the triggers you want on or off, and hit **Test** to feel any
+   of them.
+4. On the **Device** tab, enter your callsign (so kill / hit / death only fire for you) and turn
+   on **HUD auto-detect**, which learns your HUD the first time it sees the weapon counters.
 
-If detection looks off, use Set Region to box the weapon counters, or Re-learn HUD to redo it.
+If detection looks off, use **Set Region** (Device tab) to box the weapon counters, or
+**Re-learn HUD** to redo it.
 
 ## How it works
 
