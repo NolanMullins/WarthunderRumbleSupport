@@ -26,6 +26,9 @@ datasets/*
 # ...but the app's own bundled UI assets (icon) ARE tracked.
 !src/winwinghaptics/ui/assets/**/*.png
 
+# ...and the README/doc screenshots ARE tracked.
+!docs/*.png
+
 # App runtime artifacts
 crash_log.txt
 hudtest_result.txt
