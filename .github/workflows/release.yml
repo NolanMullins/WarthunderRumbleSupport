@@ -50,7 +50,7 @@ jobs:
         if: github.event_name == 'push'
         shell: pwsh
         run: |
-          $tag = '${{ github.ref_name }}'                       # e.g. v0.2.0
+          $tag = $env:GITHUB_REF_NAME                            # e.g. v0.2.0 (built-in env var)
           $ver = (python -c "import sys; sys.path.insert(0,'src'); import winwinghaptics; print(winwinghaptics.__version__)").Trim()
           $expected = "v$ver"
           if ($tag -ne $expected) {
@@ -93,7 +93,11 @@ jobs:
           $resultFile = Join-Path $wd 'hudtest_result.txt'
           Remove-Item -ErrorAction SilentlyContinue $resultFile
           $p = Start-Process -FilePath $exe -ArgumentList '--hudtest' -WorkingDirectory $wd -PassThru
-          $p.WaitForExit(60000) | Out-Null
+          if (-not $p.WaitForExit(60000)) {
+            try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch { }
+            Write-Error "Smoke test timed out after 60s -- the exe did not exit (possible hang)."
+            exit 1
+          }
           if (-not (Test-Path $resultFile)) {
             Write-Error "Smoke test produced no result file -- the exe likely crashed at launch (bundling/import bug)."
             exit 1
@@ -112,8 +116,8 @@ jobs:
       - name: Package the build
         shell: pwsh
         run: |
-          if ('${{ github.event_name }}' -eq 'push') {
-            $asset = "WTHaptics-${{ github.ref_name }}-win64.zip"
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $asset = "WTHaptics-$($env:GITHUB_REF_NAME)-win64.zip"
           } else {
             $ver = (python -c "import sys; sys.path.insert(0,'src'); import winwinghaptics; print(winwinghaptics.__version__)").Trim()
             $asset = "WTHaptics-v$ver-dev-win64.zip"
@@ -136,7 +140,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = '${{ github.ref_name }}'
+          $tag = $env:GITHUB_REF_NAME
           $asset = $env:ASSET
           # Idempotent: if the release already exists (e.g. a re-run), swap the asset in;
           # otherwise create it. A pre-release tag (contains '-', e.g. v0.2.0-rc1) is marked
