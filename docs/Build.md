@@ -74,15 +74,39 @@ detector_ready=True ocr_ready=True
 
 ## Releases (auto-update)
 
-The app self-updates from GitHub Releases (see `src/winwinghaptics/update/`). To publish a build
-the in-app updater will pick up:
+The app self-updates from GitHub Releases (see `src/winwinghaptics/update/`).
 
-1. **Bump the version.** Edit `__version__` in `src/winwinghaptics/__init__.py`. This is the single
-   source of truth the updater compares against the latest release tag.
-2. **Build** the `--onedir` app (above) and **zip the output folder**
-   (`dist_final/WTHaptics`) into a single `.zip`.
-3. **Create a release** tagged `v<version>` (e.g. `v0.2.0`) and **attach the `.zip`** as a release
-   asset. The release notes become the in-app changelog.
+### Automated pipeline (recommended)
+
+`.github/workflows/release.yml` builds, smoke-tests, and publishes a release automatically. To
+ship a version:
+
+1. **Bump the version on `main`.** Edit `__version__` in `src/winwinghaptics/__init__.py` (single
+   source of truth) and merge it to `main` via a PR.
+2. **Tag and push.** Create a tag that matches the version and push it:
+   ```powershell
+   git tag v0.2.0      # must equal "v" + __version__
+   git push origin v0.2.0
+   ```
+
+The pipeline (on `windows-latest`) then: verifies the tag commit is on `main`, verifies the tag
+matches `__version__` (fails loudly on a mismatch), runs the test suite, builds the `--onedir`
+app, smoke-tests the frozen exe (`--hudtest` must report `detector_ready=True`), zips it as
+`WTHaptics-v<version>-win64.zip`, and creates the GitHub release with that asset + auto-generated
+notes. A pre-release tag (e.g. `v0.2.0-rc1`) is marked as a GitHub pre-release, which the in-app
+updater ignores by default.
+
+Run the workflow manually (Actions tab → Release → Run workflow) to build + smoke-test the
+current `main` and download the zip as a build artifact **without** cutting a release — useful for
+verifying a build before tagging.
+
+### Manual fallback
+
+If you build locally instead: bump `__version__`, build the `--onedir` app (above), zip
+`dist_final/WTHaptics` into a single `.zip`, then create a release tagged `v<version>` and attach
+the `.zip`.
+
+### How the updater consumes it
 
 The updater picks the first non-draft, non-prerelease release, compares its tag to `__version__`,
 and (on a frozen Windows build) downloads the `.zip` asset, swaps the app folder, and relaunches.
