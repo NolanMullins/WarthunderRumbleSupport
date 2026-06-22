@@ -59,8 +59,9 @@ python run.py
 2. Start War Thunder and get into a match. The **War Thunder** status goes green.
 3. On the **Effects** tab, switch the triggers you want on or off, and hit **Test** to feel any
    of them.
-4. On the **Device** tab, enter your callsign (so kill / hit / death only fire for you) and turn
-   on **HUD auto-detect**, which learns your HUD the first time it sees the weapon counters.
+4. On the **Device** tab, enter your callsign so kill / hit / death only fire for you. HUD
+   auto-detect is on by default and learns your HUD the first time it sees the weapon counters,
+   so there's nothing else to set up.
 
 If detection looks off, use **Set Region** (Device tab) to box the weapon counters, or
 **Re-learn HUD** to redo it.
