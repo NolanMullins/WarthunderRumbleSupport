@@ -1624,6 +1624,8 @@ class HudDetector:
             "confirmed_after": dict(self.tracker.conf),
             "recent": {wp: [int(x) if x is not None else None for x in dq]
                        for wp, dq in self.tracker.raw.items() if any(v is not None for v in dq)},
+            "shift": int(self.shift) if self.shift is not None else None,
+            "cx": int(self.cx) if self.cx is not None else None,
             "capture_ms": round(timings[0], 2),
             "read_ms": round(timings[1], 2),
         }

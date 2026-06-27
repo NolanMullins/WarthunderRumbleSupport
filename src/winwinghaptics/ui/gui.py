@@ -19,6 +19,7 @@ import webbrowser
 
 from .. import config
 from ..app import AppController
+from ..app.controller import record_button_label
 from . import theme
 from . import effectspec
 from .icons import IconLoader
@@ -472,9 +473,41 @@ def run_gui(app_file):
                       bg=C["bg_card"]).pack(side="left")
         RoundedButton(adv, "Re-learn HUD", lambda: ctrl.calibrate_detector(),
                       bg=C["bg_card"]).pack(side="left", padx=6)
-        rec_btn = RoundedButton(adv, "Record 30s", lambda: ctrl.start_record(), bg=C["bg_card"])
+        rec_btn = RoundedButton(adv, record_button_label(state.get("record_seconds", 30)),
+                                lambda: ctrl.start_record(), bg=C["bg_card"])
         rec_btn.pack(side="left")
         refs["rec_btn"] = rec_btn
+
+        # Recording length selector (persisted). Longer sessions capture far more real launches
+        # for ground-truth scoring; full-frame PNGs are ~1 MB/s so the choice has a disk cost.
+        rec_row = tk.Frame(hud_card, bg=C["bg_card"]); rec_row.pack(fill="x", pady=(6, 0))
+        tk.Label(rec_row, text="Length", bg=C["bg_card"], fg=C["text_muted"],
+                 font=f_small).pack(side="left")
+        _dur_presets = [("30s", 30), ("1min", 60), ("2min", 120), ("5min", 300), ("10min", 600)]
+        _dur_by_label = dict(_dur_presets)
+        _cur_secs = int(state.get("record_seconds", 30))
+        _cur_label = next((lbl for lbl, s in _dur_presets if s == _cur_secs), f"{_cur_secs}s")
+        dur_var = tk.StringVar(value=_cur_label)
+
+        def on_duration(*_):
+            secs = _dur_by_label.get(dur_var.get(), _cur_secs)
+            state["record_seconds"] = secs
+            ctrl.save_cfg()
+            try:
+                rec_btn.set_text(record_button_label(secs))
+            except Exception:
+                pass
+
+        dur_menu = tk.OptionMenu(rec_row, dur_var, *[lbl for lbl, _ in _dur_presets],
+                                 command=lambda *_: on_duration())
+        dur_menu.configure(bg=C["bg_subtle"], fg=C["text"], font=f_small, relief="flat",
+                           highlightthickness=0, activebackground=C["bg_subtle"],
+                           activeforeground=C["text"], bd=0)
+        try:
+            dur_menu["menu"].configure(bg=C["bg_subtle"], fg=C["text"])
+        except Exception:
+            pass
+        dur_menu.pack(side="left", padx=6)
     else:
         tk.Label(hud_card, text="Unavailable in this build (needs OCR engine).",
                  bg=C["bg_card"], fg=C["text_muted"], font=f_small).pack(anchor="w", pady=4)
@@ -559,6 +592,16 @@ def run_gui(app_file):
     callsign_var.set(state.get("callsign", ""))
     en_hud.set(state["hud_on"])
     if _HUD:
+        # Reflect the persisted recording length in the dropdown + Record button. The widgets
+        # were built from defaults BEFORE load_cfg() ran above, so without this a saved length
+        # (e.g. 5min) would show as "30s" while start_record() actually used the saved value.
+        try:
+            _secs = int(state.get("record_seconds", 30))
+            _lbl = next((lbl for lbl, s in _dur_presets if s == _secs), f"{_secs}s")
+            dur_var.set(_lbl)
+            rec_btn.set_text(record_button_label(_secs))
+        except Exception:
+            pass
         _d0 = ctrl.get_det()
         if _d0 is not None and _d0.calibrated:
             ctrl.ui.set_calib_label(
