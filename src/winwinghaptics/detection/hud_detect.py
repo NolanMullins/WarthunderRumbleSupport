@@ -884,6 +884,23 @@ class TemporalTracker:
                              # of being compared to the pre-death count (which would fire a
                              # phantom on a reset like 270->150 or 4->3). Brief cloud dropouts
                              # are far shorter and never trigger this.
+    DISCRETE_MIN = 3         # consecutive sub-baseline reads required to fire a DISCRETE round.
+                             # 3 rejects a 2-frame transient cloud dip that recovers (48,45,40,48)
+                             # while still firing real salvos (one frame later). A/B-togglable.
+    DIGIT_BOUND = True       # clamp a discrete count read to a plausible per-weapon ceiling (see
+                             # _bound_digits / DIGIT_CEILING). Fixes missiles "rarely firing" in a
+                             # match: an adjacent HUD number (a missile's lock-range/seeker info)
+                             # rendered right of the count gets segmented INTO it (4 -> "442"/
+                             # "341"), which used to corrupt the baseline upward and go deaf to
+                             # real launches. A/B-togglable.
+    # Conservative per-weapon SANITY ceilings for discrete ordnance counts on a fighter (the app
+    # targets the Ursa Minor *Fighter* stick). These are deliberately well ABOVE any real fighter
+    # loadout -- their only job is to catch GROSS digit-inflation (a 1-2 digit count read as 3-4
+    # digits), not to bound legitimate values. A read above the ceiling is digit-inflation; since
+    # the count is LEFT-ALIGNED at count_x, its leading digit(s) are the true count, so we recover
+    # it by dropping trailing digits until it is <= the ceiling. Counters (flares/chaff) are NOT
+    # bounded: their loadouts are large and variable (hundreds), so a magnitude ceiling is unsafe.
+    DIGIT_CEILING = {"AAM": 24, "RKT": 200, "BMB": 60}
 
     def __init__(self, classes=None, window=7, min_valid=4, abs_floor=2):
         self.classes = dict(classes or WEAPON_CLASS)
@@ -909,6 +926,30 @@ class TemporalTracker:
             dq.clear()
         for dq in self.hist.values():
             dq.clear()
+
+    def _bound_digits(self, wp, v):
+        """Clamp a discrete count read to a plausible per-weapon ceiling (DIGIT_CEILING).
+
+        War Thunder renders an adjacent number (a missile's lock-range / seeker readout) right of
+        the count, in the same font/baseline; the left-to-right reader segments it INTO the count,
+        so a 1-digit "4" reads as "442"/"341". Such a read grossly exceeds any real fighter loadout
+        -- it is digit-inflation. Because the count is LEFT-ALIGNED at count_x (the reader anchors
+        box[0] there), its leading digit(s) ARE the true count, so we recover it by dropping
+        trailing digits until the value is within the ceiling (442 -> 4, 341 -> 3, 482 -> 48).
+
+        Stateless on purpose: unlike a learned per-weapon width, an absolute ceiling can't be
+        mis-seeded by an abnormal start (app launched mid-match / mid-lock-info) and never caps a
+        genuine rearm to a fuller loadout (which is still <= the ceiling). Applied to discrete
+        ordnance only -- the gun (rapid) is telemetry-covered, and counters' loadouts are too large
+        and variable for a magnitude ceiling."""
+        ceil = self.DIGIT_CEILING.get(wp)
+        if v is None or ceil is None or v <= ceil:
+            return v
+        s = str(v)
+        k = len(s)
+        while k > 1 and int(s[:k]) > ceil:     # drop trailing digits until within the ceiling
+            k -= 1
+        return int(s[:k])
 
     def _level(self, wp):
         """Median of recent valid reads (robust current value), or None if too few."""
@@ -996,6 +1037,8 @@ class TemporalTracker:
         for wp, cls in self.classes.items():
             r = reads.get(wp)
             v = int(r[0]) if r else None
+            if self.DIGIT_BOUND:
+                v = self._bound_digits(wp, v)
             self.raw[wp].append(v)
             self.hist[wp].append(v)
             level = self._level(wp)
@@ -1029,21 +1072,25 @@ class TemporalTracker:
             # DISCRETE per-round onset: discrete ordnance (missile/rocket/bomb) fires one shot
             # per decrement. Per the haptic model, EACH round should play its own burst
             # animation (overlapping rounds just merge in the effect), so we must NOT collapse a
-            # fast multi-round drop into a single event. Fire the instant two raw reads support a
-            # new lower value, stepping the baseline DOWN BY ONE observed level per fire (cur->a,
-            # not cur->b): on a salvo read as 34,33,32 this fires 34->33 now and leaves 33->32 for
-            # the next frame, so every round registers instead of merging into one 34->32. Two
-            # frames below baseline (b <= a < cur) are required so a 1-frame misread can't trigger;
-            # _is_fire rejects truncation clusters. No flicker vetoes on discrete -- a same-
-            # trailing drop like 24->14 is a real launch, not a misread.
+            # fast multi-round drop into a single event. We require THREE consecutive valid reads
+            # strictly below baseline and non-increasing (b <= a <= c2 < cur), then fire cur->c2
+            # (step down by one observed level): on a salvo read as 48,47,46,45 this fires
+            # 48->47 and leaves 47->46 for the next frame, so every round registers. The third
+            # frame of confirmation is what rejects a 2-frame TRANSIENT cloud dip that recovers
+            # (48,45,40,48 -- a correlated background misread): it never produces a third
+            # sub-baseline read, so it no longer phantom-fires. Cost is ~1 frame (~60 ms) of
+            # added onset latency on a genuine launch; _is_fire still rejects truncation clusters.
             if cls == "discrete":
                 vv = [x for x in self.raw[wp] if x is not None]
-                if len(vv) >= 2:
-                    a, b = vv[-2], vv[-1]
-                    if b < cur and b <= a < cur and self._is_fire(cls, cur, a):
+                k = self.DISCRETE_MIN
+                if len(vv) >= k:
+                    tail = vv[-k:]                       # last k valid reads, oldest -> newest
+                    top = tail[0]                        # the level we would step the baseline to
+                    nonincr = all(tail[j + 1] <= tail[j] for j in range(k - 1))
+                    if nonincr and top < cur and self._is_fire(cls, cur, top):
                         events.append((wp, WEAPON_EFFECT.get(wp, "missile"), cls,
-                                       cur - a, cur, a))
-                        self.conf[wp] = a
+                                       cur - top, cur, top))
+                        self.conf[wp] = top
                         self._cand.pop(wp, None)
                         self._last_drop[wp] = self._t
                         continue
