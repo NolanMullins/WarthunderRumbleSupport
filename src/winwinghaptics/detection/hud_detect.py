@@ -78,6 +78,14 @@ _DIGIT_MODEL_TRIED = False
 # means we don't actually know it, so we no-read rather than emit a coin-flip).
 MODEL_MARGIN_FLOOR = 0.20
 
+# Require a verified weapon LABEL to accept a DISCRETE ordnance count (see read_counts). Missiles/
+# rockets/bombs fire infrequently and their HUD entry vanishes when spent/deselected; with it gone
+# the row anchor can drift onto a nearby unrelated readout (a "404 m" range/altitude number) and
+# read its changing value as phantom launches. Requiring the label makes a label-less "confident
+# number" a no-read instead -- the tracker holds last-known, so no real launch is lost. Gun/counters
+# keep the label-less path (they fire ~continuously; their labels flicker in cloud). 0/False disables (A/B).
+DISCRETE_REQUIRE_LABEL = True
+
 
 def _digit_model():
     """Lazy-load the shipped digit classifier once (None if absent -> NCC fallback)."""
@@ -803,7 +811,21 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
             strong = conf >= 0.55
         else:
             strong = (conf >= 0.55 and val >= 10) or conf >= 0.88
-        if label_ok or strong:
+        # DISCRETE ordnance must have its LABEL verified to accept a count. Missiles/rockets/bombs
+        # fire infrequently and their HUD entry DISAPPEARS when the ammo is spent or the weapon is
+        # deselected; with the entry gone the row anchor can drift onto a nearby unrelated readout
+        # (e.g. a "404 m" range/altitude number) whose value changes frame to frame and gets read
+        # as phantom launches. The label token is the reliable proof the row really is this weapon,
+        # so for discrete we do NOT accept a label-less "confident number" -- the tracker holds the
+        # last good count through brief label dropouts, so no real launch is lost (a launch shows
+        # the lower count across many frames, and any one of them that verifies the label fires it).
+        # The gun (rapid) and countermeasures (counter) KEEP the label-less path: they fire ~contin-
+        # uously and their labels flicker in cloud, where requiring the label would drop real activity.
+        if DISCRETE_REQUIRE_LABEL and WEAPON_CLASS.get(wp) == "discrete":
+            accepted = label_ok
+        else:
+            accepted = label_ok or strong
+        if accepted:
             out[wp] = best_rc
     if return_shift and return_cx:
         return out, shift, count_x
