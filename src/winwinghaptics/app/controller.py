@@ -22,6 +22,7 @@ from ..effects import dispatch
 from ..sources import WarThunder
 from ..sources import killfeed
 from ..sources import process as wt_process
+from ..sources.marker import KeyMarker, DEFAULT_MARKER
 from ..events import EventType
 
 try:
@@ -46,6 +47,16 @@ class NullUiBridge:
 
     def set_record_button(self, text):
         pass
+
+
+def _screen_size():
+    """Primary screen pixel size [w, h] for the recording manifest (display context), or None."""
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        return [int(u.GetSystemMetrics(0)), int(u.GetSystemMetrics(1))]
+    except Exception:
+        return None
 
 
 class AppController:
@@ -84,6 +95,12 @@ class AppController:
             "hud_rec_until": 0.0,
             "hud_rec_dir": None,
             "hud_rec_n": 0,
+            # Ground-truth fire marker: while recording, the user taps this (unbound) key at the
+            # instant they fire a missile -> a pixel-independent launch record to score detection
+            # against. record_seconds is the capture length (longer than 30s for match sessions).
+            "marker_key": DEFAULT_MARKER,
+            "record_seconds": 30,
+            "hud_rec_marks": 0,
             "callsign": "",
             "running": True,
             "firing_gun": False,   # set by the HUD worker; lets the UI light the live gun row
@@ -96,6 +113,7 @@ class AppController:
         self._wt_proc_open = False        # last WT process-presence result
         self._loadout_missing = set()     # calibrated rows missing on the PREVIOUS loadout check
                                           # (debounces disappear/move-driven re-learns vs cloud)
+        self._marker = None               # KeyMarker, created per recording from marker_key
 
         self._log_q = queue.Queue()
         # Serialises calibration: the manual 'Re-learn' button and the HUD worker both call
@@ -127,6 +145,11 @@ class AppController:
             self.state["hud_region"] = tuple(cfg["hud_region"])
         self.state["hud_on"] = bool(cfg.get("hud_on", True))
         self.state["callsign"] = cfg.get("callsign", "")
+        self.state["marker_key"] = cfg.get("marker_key", DEFAULT_MARKER)
+        try:
+            self.state["record_seconds"] = max(10, int(cfg.get("record_seconds", 30)))
+        except Exception:
+            self.state["record_seconds"] = 30
         return cfg.get("enables") or {}
 
     def save_cfg(self):
@@ -199,10 +222,14 @@ class AppController:
         """Manual 'Re-learn HUD' button -> run calibration in a worker thread."""
         threading.Thread(target=lambda: self.calibrate_core(True), daemon=True).start()
 
-    def start_record(self):
-        """Begin a 30s diagnostic recording: every polled frame is saved as a PNG and a
-        telemetry line is written to telemetry.jsonl. The HUD worker does the actual capture
-        so we record exactly what detection sees."""
+    def start_record(self, duration=None):
+        """Begin a diagnostic recording: every polled frame is saved as a PNG and a telemetry
+        line is written to telemetry.jsonl. The HUD worker does the actual capture so we record
+        exactly what detection sees. `duration` (seconds) defaults to state['record_seconds'].
+
+        While recording, the configured fire-marker key is polled each frame: a key-down is
+        logged as a {"type":"marker"} line -- pixel-independent ground truth for offline scoring
+        of missile detection (see sources/marker.py)."""
         if not self.hud_available:
             return
         if self.state["hud_rec_until"] > time.time():
@@ -213,6 +240,7 @@ class AppController:
         if not self.state["hud_on"]:
             self.log("Enable HUD auto-detect before recording.")
             return
+        dur = float(duration if duration is not None else self.state.get("record_seconds", 30))
         ts = time.strftime("%Y%m%d_%H%M%S")
         rec_dir = os.path.join(self.base_dir, f"hud_rec_{ts}")
         try:
@@ -231,9 +259,16 @@ class AppController:
                 calib_saved = True
             except Exception as e:
                 self.log(f"calib dump failed: {e}", "fx")
+        marker_key = self.state.get("marker_key", DEFAULT_MARKER)
+        self._marker = KeyMarker(marker_key)
+        self._marker.reset()
         header = {
             "type": "header", "time": ts,
             "region": list(self.state["hud_region"]),
+            "screen": _screen_size(),
+            "duration_s": dur,
+            "marker_key": marker_key,
+            "marker_available": self._marker.available,
             "calibrated": det.calibrated,
             "calib_file": "calib.json" if calib_saved else None,
             "weapons": sorted(det.calib.rows) if det.calibrated else [],
@@ -249,8 +284,10 @@ class AppController:
             return
         self.state["hud_rec_dir"] = rec_dir
         self.state["hud_rec_n"] = 0
-        self.state["hud_rec_until"] = time.time() + 30.0
-        self.log(f"Recording 30s → {os.path.basename(rec_dir)} …", "fx")
+        self.state["hud_rec_marks"] = 0
+        self.state["hud_rec_until"] = time.time() + dur
+        mk = marker_key if self._marker.available else f"{marker_key}(?)"
+        self.log(f"Recording {dur:.0f}s (mark key: {mk}) → {os.path.basename(rec_dir)} …", "fx")
         self.ui.set_record_button("● Recording…")
 
     def rec_write(self, line):
@@ -508,6 +545,19 @@ class AppController:
             if recording and rec_info is not None:
                 n = self.state["hud_rec_n"]
                 self.state["hud_rec_n"] = n + 1
+                # Ground-truth fire marker: a key-down on the configured (unbound) key means the
+                # user just fired. Log it as its own line AND tag the frame, so offline scoring
+                # can align real launches to detector fires without any hand-labelling.
+                marked = False
+                if self._marker is not None:
+                    try:
+                        marked = self._marker.poll()
+                    except Exception:
+                        marked = False
+                if marked:
+                    self.state["hud_rec_marks"] += 1
+                    self.rec_write({"type": "marker", "n": n, "t": round(now, 3),
+                                    "idx": self.state["hud_rec_marks"]})
                 if frame is not None:
                     try:
                         hud_detect.save_gray_png(
@@ -519,15 +569,18 @@ class AppController:
                 rec_info["t"] = round(now, 3)
                 rec_info["counts"] = counts
                 rec_info["dispatched"] = dispatched
+                rec_info["mark"] = marked
                 self.rec_write(rec_info)
                 if now >= self.state["hud_rec_until"]:
                     d = self.state["hud_rec_dir"]
                     # write the footer BEFORE clearing hud_rec_dir -- rec_write reads
                     # state["hud_rec_dir"] and early-returns when it's None.
                     self.rec_write({"type": "footer", "frames": self.state["hud_rec_n"],
-                                    "t": round(now, 3)})
+                                    "marks": self.state["hud_rec_marks"], "t": round(now, 3)})
                     self.state["hud_rec_dir"] = None
-                    self.log(f"Recording done: {self.state['hud_rec_n']} frames → "
+                    self._marker = None
+                    self.log(f"Recording done: {self.state['hud_rec_n']} frames, "
+                             f"{self.state['hud_rec_marks']} marks → "
                              f"{os.path.basename(d)}", "fx")
                     self.ui.set_record_button("Record 30s")
             time.sleep(0.02)   # ~20+ Hz poll: faster frames -> quicker confirmation/feel
