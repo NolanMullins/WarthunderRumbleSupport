@@ -179,17 +179,37 @@ def run_gui(app_file):
             log(f"Downloading update v{info.version}…", "fx")
 
             def finish_exit():
-                # On the Tk MAIN thread: release the device + close the window so the helper .bat
-                # (which waits for this process to exit) can swap the folder and relaunch. The
-                # worker thread cannot exit the process itself -- sys.exit() there only ends the
-                # worker -- so update() marshals the exit here.
+                # On the Tk MAIN thread: release the device + close the window, then FORCE the
+                # process to terminate. The helper .bat waits for THIS pid to exit before it swaps
+                # the app folder and relaunches; just returning from mainloop is not enough on a
+                # frozen --noconsole build (a lingering thread or Tk teardown can keep the process
+                # alive, leaving the helper spinning in its wait loop forever — the "black window
+                # stuck on find <pid>" symptom). os._exit guarantees the file locks are released.
                 set_update_status("Installing… the app will restart.")
                 log("Update downloaded — restarting to install…", "fx")
                 try:
                     ctrl.shutdown()
                 except Exception:
                     pass
-                root.destroy()
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
+                os._exit(0)
+
+            def request_exit():
+                # Called by update() from the worker thread once the swap helper is launched. Marshal
+                # the graceful exit onto the Tk main thread, but ALSO arm a watchdog that force-exits
+                # no matter what: root.after() from a worker thread is not Tk-thread-safe and may
+                # never run, and ctrl.shutdown() could block — either way the process MUST die so the
+                # update helper can stop waiting and apply the swap.
+                wd = threading.Timer(2.0, lambda: os._exit(0))
+                wd.daemon = True
+                wd.start()
+                try:
+                    root.after(0, finish_exit)
+                except Exception:
+                    pass
 
             def work():
                 ok = _updater.update(
@@ -197,7 +217,7 @@ def run_gui(app_file):
                     on_progress=lambda r, t: root.after(
                         0, lambda: set_update_status(
                             "Downloading… %d%%" % (int(r * 100 / t) if t else 0))),
-                    _exit=lambda: root.after(0, finish_exit))
+                    _exit=request_exit)
                 if not ok:
                     update_state["busy"] = False
                     root.after(0, lambda: (set_update_status("Update failed — opening Releases"),
