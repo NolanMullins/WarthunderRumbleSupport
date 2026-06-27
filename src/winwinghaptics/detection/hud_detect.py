@@ -887,6 +887,20 @@ class TemporalTracker:
     DISCRETE_MIN = 3         # consecutive sub-baseline reads required to fire a DISCRETE round.
                              # 3 rejects a 2-frame transient cloud dip that recovers (48,45,40,48)
                              # while still firing real salvos (one frame later). A/B-togglable.
+    DIGIT_BOUND = True       # clamp a discrete count read to a plausible per-weapon ceiling (see
+                             # _bound_digits / DIGIT_CEILING). Fixes missiles "rarely firing" in a
+                             # match: an adjacent HUD number (a missile's lock-range/seeker info)
+                             # rendered right of the count gets segmented INTO it (4 -> "442"/
+                             # "341"), which used to corrupt the baseline upward and go deaf to
+                             # real launches. A/B-togglable.
+    # Conservative per-weapon SANITY ceilings for discrete ordnance counts on a fighter (the app
+    # targets the Ursa Minor *Fighter* stick). These are deliberately well ABOVE any real fighter
+    # loadout -- their only job is to catch GROSS digit-inflation (a 1-2 digit count read as 3-4
+    # digits), not to bound legitimate values. A read above the ceiling is digit-inflation; since
+    # the count is LEFT-ALIGNED at count_x, its leading digit(s) are the true count, so we recover
+    # it by dropping trailing digits until it is <= the ceiling. Counters (flares/chaff) are NOT
+    # bounded: their loadouts are large and variable (hundreds), so a magnitude ceiling is unsafe.
+    DIGIT_CEILING = {"AAM": 24, "RKT": 200, "BMB": 60}
 
     def __init__(self, classes=None, window=7, min_valid=4, abs_floor=2):
         self.classes = dict(classes or WEAPON_CLASS)
@@ -912,6 +926,30 @@ class TemporalTracker:
             dq.clear()
         for dq in self.hist.values():
             dq.clear()
+
+    def _bound_digits(self, wp, v):
+        """Clamp a discrete count read to a plausible per-weapon ceiling (DIGIT_CEILING).
+
+        War Thunder renders an adjacent number (a missile's lock-range / seeker readout) right of
+        the count, in the same font/baseline; the left-to-right reader segments it INTO the count,
+        so a 1-digit "4" reads as "442"/"341". Such a read grossly exceeds any real fighter loadout
+        -- it is digit-inflation. Because the count is LEFT-ALIGNED at count_x (the reader anchors
+        box[0] there), its leading digit(s) ARE the true count, so we recover it by dropping
+        trailing digits until the value is within the ceiling (442 -> 4, 341 -> 3, 482 -> 48).
+
+        Stateless on purpose: unlike a learned per-weapon width, an absolute ceiling can't be
+        mis-seeded by an abnormal start (app launched mid-match / mid-lock-info) and never caps a
+        genuine rearm to a fuller loadout (which is still <= the ceiling). Applied to discrete
+        ordnance only -- the gun (rapid) is telemetry-covered, and counters' loadouts are too large
+        and variable for a magnitude ceiling."""
+        ceil = self.DIGIT_CEILING.get(wp)
+        if v is None or ceil is None or v <= ceil:
+            return v
+        s = str(v)
+        k = len(s)
+        while k > 1 and int(s[:k]) > ceil:     # drop trailing digits until within the ceiling
+            k -= 1
+        return int(s[:k])
 
     def _level(self, wp):
         """Median of recent valid reads (robust current value), or None if too few."""
@@ -999,6 +1037,8 @@ class TemporalTracker:
         for wp, cls in self.classes.items():
             r = reads.get(wp)
             v = int(r[0]) if r else None
+            if self.DIGIT_BOUND:
+                v = self._bound_digits(wp, v)
             self.raw[wp].append(v)
             self.hist[wp].append(v)
             level = self._level(wp)
