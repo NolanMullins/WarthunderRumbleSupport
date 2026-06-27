@@ -11,6 +11,9 @@ dist/
 dist_final/
 *.spec
 
+# Installer build output
+dist_installer/
+
 # Packaged app
 *.zip
 

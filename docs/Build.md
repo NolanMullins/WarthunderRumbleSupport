@@ -48,6 +48,32 @@ Flag notes (each fixes a real frozen-build failure):
 
 Build from a checkout that matches the version you intend to ship (see Releases below).
 
+## Installer (Inno Setup)
+
+The release also ships a one-click Windows installer (`WTHaptics-Setup-v<version>.exe`) built from
+`installer/WTHaptics.iss` with [Inno Setup 6](https://jrsoftware.org/isinfo.php). It packages the
+`dist_final\WTHaptics` `--onedir` build into a setup that creates Start-menu (and optional desktop)
+shortcuts and an Add/Remove Programs entry with an uninstaller.
+
+**It installs PER-USER to `%LOCALAPPDATA%\Programs\WT Haptics` (no admin / no UAC).** This is
+deliberate: the app self-updates by overwriting its own `--onedir` folder in place
+(`src/winwinghaptics/update/installer.py`). A user-writable location lets that keep working with no
+elevation — install once, then every future GitHub release lands automatically via the in-app
+updater. A Program Files install would need admin to overwrite and would silently break self-update.
+
+Build the installer locally (after the PyInstaller build above):
+
+```powershell
+# ISCC is the Inno Setup command-line compiler; install Inno Setup 6 first.
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DMyAppVersion=0.1.1 installer\WTHaptics.iss
+# -> dist_installer\WTHaptics-Setup-v0.1.1.exe
+```
+
+`MyAppVersion` defaults to `0.0.0-dev` if omitted. A silent install/uninstall (for testing) is
+`WTHaptics-Setup-v<ver>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Uninstall removes only what
+setup installed, so user data next to the exe (`winwing_haptics.json`, `hud_calib.json`, `hud_rec_*`
+recordings) is left behind.
+
 ## Smoke test
 
 Run the build headlessly to confirm the detector and OCR loaded inside the frozen app:
@@ -91,20 +117,25 @@ ship a version:
 
 The pipeline (on `windows-latest`) then: verifies the tag commit is on `main`, verifies the tag
 matches `__version__` (fails loudly on a mismatch), runs the test suite, builds the `--onedir`
-app, smoke-tests the frozen exe (`--hudtest` must report `detector_ready=True`), zips it as
-`WTHaptics-v<version>-win64.zip`, and creates the GitHub release with that asset + auto-generated
-notes. A pre-release tag (e.g. `v0.2.0-rc1`) is marked as a GitHub pre-release, which the in-app
-updater ignores by default.
+app, smoke-tests the frozen exe (`--hudtest` must report `detector_ready=True`), then publishes a
+GitHub release with **two assets**:
+
+* `WTHaptics-v<version>-win64.zip` — the zipped `--onedir` build. **This is what the in-app
+  self-updater downloads and swaps in place** (it matches assets by the `.zip` suffix).
+* `WTHaptics-Setup-v<version>.exe` — the one-click Inno Setup installer for a fresh install.
+
+A pre-release tag (e.g. `v0.2.0-rc1`) is marked as a GitHub pre-release, which the in-app updater
+ignores by default.
 
 Run the workflow manually (Actions tab → Release → Run workflow) to build + smoke-test the
-current `main` and download the zip as a build artifact **without** cutting a release — useful for
-verifying a build before tagging.
+current `main` and download the zip **and installer** as build artifacts **without** cutting a
+release — useful for verifying a build before tagging.
 
 ### Manual fallback
 
 If you build locally instead: bump `__version__`, build the `--onedir` app (above), zip
-`dist_final/WTHaptics` into a single `.zip`, then create a release tagged `v<version>` and attach
-the `.zip`.
+`dist_final/WTHaptics` into a single `.zip`, build the installer (see Installer section), then
+create a release tagged `v<version>` and attach both the `.zip` and the `Setup .exe`.
 
 ### How the updater consumes it
 
