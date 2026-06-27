@@ -592,6 +592,16 @@ def run_gui(app_file):
     callsign_var.set(state.get("callsign", ""))
     en_hud.set(state["hud_on"])
     if _HUD:
+        # Reflect the persisted recording length in the dropdown + Record button. The widgets
+        # were built from defaults BEFORE load_cfg() ran above, so without this a saved length
+        # (e.g. 5min) would show as "30s" while start_record() actually used the saved value.
+        try:
+            _secs = int(state.get("record_seconds", 30))
+            _lbl = next((lbl for lbl, s in _dur_presets if s == _secs), f"{_secs}s")
+            dur_var.set(_lbl)
+            rec_btn.set_text(record_button_label(_secs))
+        except Exception:
+            pass
         _d0 = ctrl.get_det()
         if _d0 is not None and _d0.calibrated:
             ctrl.ui.set_calib_label(

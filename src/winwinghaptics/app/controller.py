@@ -314,6 +314,28 @@ class AppController:
         except Exception:
             pass
 
+    def _finalize_recording_if_due(self, now):
+        """End an active recording once its capture window has elapsed: write the footer, clear
+        the session (dir + marker), log, and reset the Record button. Returns True if it finalized.
+
+        Kept separate (and time-injectable) so the stop check is independent of the worker's
+        `recording = now < until` flag -- a stop check nested under that flag is unreachable
+        (same `now`), which is why the footer/cleanup/button-reset never ran. Fires exactly once:
+        after it clears hud_rec_dir, the open-session guard is false on the next tick."""
+        if self.state["hud_rec_dir"] is None or now < self.state["hud_rec_until"]:
+            return False
+        d = self.state["hud_rec_dir"]
+        # write the footer BEFORE clearing hud_rec_dir -- rec_write reads state["hud_rec_dir"]
+        # and early-returns when it's None.
+        self.rec_write({"type": "footer", "frames": self.state["hud_rec_n"],
+                        "marks": self.state["hud_rec_marks"], "t": round(now, 3)})
+        self.state["hud_rec_dir"] = None
+        self._marker = None
+        self.log(f"Recording done: {self.state['hud_rec_n']} frames, "
+                 f"{self.state['hud_rec_marks']} marks → {os.path.basename(d)}", "fx")
+        self.ui.set_record_button(record_button_label(self.state.get("record_seconds", 30)))
+        return True
+
     # ---- workers ----
     def stick_worker(self):
         while self.state["running"]:
@@ -585,19 +607,11 @@ class AppController:
                 rec_info["dispatched"] = dispatched
                 rec_info["mark"] = marked
                 self.rec_write(rec_info)
-                if now >= self.state["hud_rec_until"]:
-                    d = self.state["hud_rec_dir"]
-                    # write the footer BEFORE clearing hud_rec_dir -- rec_write reads
-                    # state["hud_rec_dir"] and early-returns when it's None.
-                    self.rec_write({"type": "footer", "frames": self.state["hud_rec_n"],
-                                    "marks": self.state["hud_rec_marks"], "t": round(now, 3)})
-                    self.state["hud_rec_dir"] = None
-                    self._marker = None
-                    self.log(f"Recording done: {self.state['hud_rec_n']} frames, "
-                             f"{self.state['hud_rec_marks']} marks → "
-                             f"{os.path.basename(d)}", "fx")
-                    self.ui.set_record_button(
-                        record_button_label(self.state.get("record_seconds", 30)))
+            # Finalize once the capture window elapses. MUST be outside the `if recording` block:
+            # `recording` is `now < until`, so a stop check nested under it (same `now`) is
+            # unreachable -- the footer/cleanup/button-reset would never run, leaving the button
+            # stuck on "Recording…" (very visible on a long capture).
+            self._finalize_recording_if_due(now)
             time.sleep(0.02)   # ~20+ Hz poll: faster frames -> quicker confirmation/feel
 
     # ---- lifecycle ----
