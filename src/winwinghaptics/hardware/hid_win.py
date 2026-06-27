@@ -68,6 +68,11 @@ WriteFile.restype = wintypes.BOOL
 WriteFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
                       ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
 
+ReadFile = kernel32.ReadFile
+ReadFile.restype = wintypes.BOOL
+ReadFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                     ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+
 CloseHandle = kernel32.CloseHandle
 
 # CRITICAL: declare SetupAPI signatures so 64-bit HANDLEs/pointers aren't truncated to
@@ -169,6 +174,31 @@ def write(handle, data):
     written = wintypes.DWORD(0)
     buf = ctypes.create_string_buffer(bytes(data), len(data))
     return bool(WriteFile(handle, buf, len(data), ctypes.byref(written), None))
+
+
+def input_report_length(handle):
+    """Return the device's HID InputReportByteLength (bytes per input report), or 0."""
+    n = 0
+    pp = ctypes.c_void_p()
+    if hid.HidD_GetPreparsedData(handle, ctypes.byref(pp)):
+        caps = HIDP_CAPS()
+        if hid.HidP_GetCaps(pp, ctypes.byref(caps)) == HIDP_STATUS_SUCCESS:
+            n = int(caps.InputReportByteLength)
+        hid.HidD_FreePreparsedData(pp)
+    return n
+
+
+def read(handle, length):
+    """Blocking read of one HID input report (`length` bytes). Returns the bytes actually read
+    (may be shorter), or None on error. ReadFile blocks until the device sends a report, so this
+    is meant to run on a dedicated thread that simply tracks the latest report."""
+    if length <= 0:
+        return None
+    buf = ctypes.create_string_buffer(length)
+    got = wintypes.DWORD(0)
+    if not ReadFile(handle, buf, length, ctypes.byref(got), None):
+        return None
+    return buf.raw[:got.value]
 
 
 def close(handle):
