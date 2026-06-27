@@ -117,6 +117,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $ver = $env:GITHUB_REF_NAME -replace '^v', ''       # tag v0.2.0 -> 0.2.0
             $asset = "WTHaptics-$($env:GITHUB_REF_NAME)-win64.zip"
           } else {
             $ver = (python -c "import sys; sys.path.insert(0,'src'); import winwinghaptics; print(winwinghaptics.__version__)").Trim()
@@ -125,13 +126,44 @@ jobs:
           Compress-Archive -Path dist_final/WTHaptics -DestinationPath $asset -CompressionLevel Optimal
           Write-Host "Packaged $asset"
           "ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "APPVER=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Upload build artifact (manual runs -- no release)
+      - name: Build the installer (Inno Setup)
+        shell: pwsh
+        run: |
+          # Inno Setup compiles the per-user setup.exe. It's preinstalled on windows-latest;
+          # install via Chocolatey if ISCC isn't already present so the step is self-sufficient.
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $candidates = @(
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe")
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (-not $found) {
+              choco install innosetup -y --no-progress
+              $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            }
+            if (-not $found) { Write-Error "Inno Setup (ISCC.exe) not found after install"; exit 1 }
+            $isccPath = $found
+          } else {
+            $isccPath = $iscc.Source
+          }
+          $ver = $env:APPVER
+          & $isccPath "/DMyAppVersion=$ver" installer/WTHaptics.iss
+          if ($LASTEXITCODE -ne 0) { Write-Error "Installer compile failed"; exit 1 }
+          $installer = "dist_installer/WTHaptics-Setup-v$ver.exe"
+          if (-not (Test-Path $installer)) { Write-Error "Installer not produced: $installer"; exit 1 }
+          Write-Host "Built installer $installer"
+          "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload build artifacts (manual runs -- no release)
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: WTHaptics-build
-          path: ${{ env.ASSET }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.INSTALLER }}
           retention-days: 14
 
       - name: Create / update the GitHub release (tag pushes only)
@@ -142,16 +174,19 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $asset = $env:ASSET
-          # Idempotent: if the release already exists (e.g. a re-run), swap the asset in;
-          # otherwise create it. A pre-release tag (contains '-', e.g. v0.2.0-rc1) is marked
-          # prerelease so the in-app updater (which skips prereleases) ignores it.
+          $installer = $env:INSTALLER
+          # The release carries BOTH assets: the .zip is what the in-app self-updater downloads
+          # and swaps in place (asset_pattern ".zip"); the Setup .exe is the one-click installer
+          # for a fresh install. Idempotent: swap assets on a re-run, else create the release.
+          # A pre-release tag (contains '-', e.g. v0.2.0-rc1) is marked prerelease so the in-app
+          # updater (which skips prereleases) ignores it.
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $asset --clobber
-            Write-Host "Updated existing release $tag with $asset"
+            gh release upload $tag $asset $installer --clobber
+            Write-Host "Updated existing release $tag with $asset + $installer"
           } else {
-            $ghArgs = @($tag, $asset, '--title', "WT Haptics $tag", '--generate-notes')
+            $ghArgs = @($tag, $asset, $installer, '--title', "WT Haptics $tag", '--generate-notes')
             if ($tag -match '-') { $ghArgs += '--prerelease' }
             gh release create @ghArgs
-            Write-Host "Created release $tag with $asset"
+            Write-Host "Created release $tag with $asset + $installer"
           }
