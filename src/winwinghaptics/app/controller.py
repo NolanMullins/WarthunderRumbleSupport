@@ -59,6 +59,14 @@ def _screen_size():
         return None
 
 
+def record_button_label(seconds):
+    """Human label for the record button, e.g. 30 -> 'Record 30s', 300 -> 'Record 5min'."""
+    s = int(seconds)
+    if s % 60 == 0 and s >= 60:
+        return f"Record {s // 60}min"
+    return f"Record {s}s"
+
+
 class AppController:
     def __init__(self, base_dir):
         self.base_dir = base_dir
@@ -158,6 +166,8 @@ class AppController:
             "hud_on": self.state["hud_on"],
             "hud_region": list(self.state["hud_region"]),
             "callsign": self.state.get("callsign", ""),
+            "record_seconds": int(self.state.get("record_seconds", 30)),
+            "marker_key": self.state.get("marker_key", DEFAULT_MARKER),
         }
         config.save(self.CONFIG, data)
 
@@ -287,7 +297,11 @@ class AppController:
         self.state["hud_rec_marks"] = 0
         self.state["hud_rec_until"] = time.time() + dur
         mk = marker_key if self._marker.available else f"{marker_key}(?)"
-        self.log(f"Recording {dur:.0f}s (mark key: {mk}) → {os.path.basename(rec_dir)} …", "fx")
+        # Rough disk estimate: full-frame PNGs dominate (~56 KB each at ~18 Hz ~= 1 MB/s);
+        # telemetry is negligible. Shown so a long session's footprint is no surprise.
+        est_mb = int(dur * 1.0)
+        self.log(f"Recording {dur:.0f}s (~{est_mb} MB, mark key: {mk}) → "
+                 f"{os.path.basename(rec_dir)} …", "fx")
         self.ui.set_record_button("● Recording…")
 
     def rec_write(self, line):
@@ -561,7 +575,7 @@ class AppController:
                 if frame is not None:
                     try:
                         hud_detect.save_gray_png(
-                            os.path.join(self.state["hud_rec_dir"], f"f{n:04d}.png"), frame)
+                            os.path.join(self.state["hud_rec_dir"], f"f{n:06d}.png"), frame)
                     except Exception:
                         pass
                 rec_info["type"] = "frame"
@@ -582,7 +596,8 @@ class AppController:
                     self.log(f"Recording done: {self.state['hud_rec_n']} frames, "
                              f"{self.state['hud_rec_marks']} marks → "
                              f"{os.path.basename(d)}", "fx")
-                    self.ui.set_record_button("Record 30s")
+                    self.ui.set_record_button(
+                        record_button_label(self.state.get("record_seconds", 30)))
             time.sleep(0.02)   # ~20+ Hz poll: faster frames -> quicker confirmation/feel
 
     # ---- lifecycle ----
