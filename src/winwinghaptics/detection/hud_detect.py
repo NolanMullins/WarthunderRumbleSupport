@@ -86,6 +86,82 @@ MODEL_MARGIN_FLOOR = 0.20
 # keep the label-less path (they fire ~continuously; their labels flicker in cloud). 0/False disables (A/B).
 DISCRETE_REQUIRE_LABEL = True
 
+# Fire a discrete-ordnance event on RELEASE-via-RELOAD-TIMER (see _detect_reload_timer / read_counts /
+# TemporalTracker). A single-shot weapon (e.g. a 1-bomb loadout, or the last round of a small rocket/
+# missile loadout) does NOT decrement to 0 when fired: the count is replaced by a reload countdown
+# "m:ss" and the row dims, so the decrement-based fire logic is structurally blind to it. We instead
+# detect the reload TIMER appearing in the count cell (a colon, which never occurs in an ammo count)
+# and fire once on the armed->reloading transition. Gated hard against phantoms: only fires if the
+# weapon had a confirmed armed baseline, requires 2 consecutive timer frames, and is suppressed when
+# the whole HUD is absent (death/respawn). 0/False disables (A/B).
+BOMB_RELOAD_FIRE = True
+
+
+def _detect_reload_timer(tn, yc, calib, cx):
+    """True if the count cell at (yc, cx) shows a reload countdown 'D:DD' rather than an ammo count.
+
+    The decisive feature is the COLON, which never appears in an ammo count ('1', '36', '1/1(F)'):
+    a colon is a run of >=2 ADJACENT columns each containing exactly TWO ink dots that are
+      - BALANCED in height (min/max >= 0.4 -- a digit / '/' / '1' stroke gives a tiny+huge pair),
+      - CLOSE together (vertical gap 2..6 px),
+      - CENTRED on the row (|dot-pair centre - row middle| <= 0.28*H), and
+      - each dot short (<= 0.42*H).
+    We additionally require a glyph to the LEFT of the colon (the minutes digit) and >=2 glyph
+    boxes to its RIGHT (the seconds digits). Anchored at the count column; the caller tries the
+    live cx plus the stable locked columns so a drifted cx can't hide the timer."""
+    band = tn[yc - calib.row_h:yc + calib.row_h, cx - 2:cx + int(calib.pitch * 4)]
+    if band.size == 0:
+        return False
+    Hh, W = band.shape
+    cy = Hh / 2.0
+    thr = max(50.0, 0.5 * float(band.max()))
+    boxes = _seg_boxes(band, min_w=2)
+    if len(boxes) < 3:
+        return False
+    if boxes[0][0] > calib.pitch * 1.0:              # leading glyph must start near count_x
+        return False
+    colon_cols = []
+    for x in range(W):
+        ci = band[:, x] > thr
+        if int(ci.sum()) < 2:
+            continue
+        runs = []; inside = False; s = 0
+        for y in range(Hh):
+            if ci[y] and not inside:
+                inside = True; s = y
+            elif not ci[y] and inside:
+                inside = False; runs.append((s, y - 1))
+        if inside:
+            runs.append((s, Hh - 1))
+        if len(runs) != 2:
+            continue
+        h0 = runs[0][1] - runs[0][0] + 1
+        h1 = runs[1][1] - runs[1][0] + 1
+        gap = runs[1][0] - runs[0][1]
+        vc = (runs[0][0] + runs[1][1]) / 2.0
+        if (min(h0, h1) / max(h0, h1) >= 0.40 and 2 <= gap <= 6
+                and max(h0, h1) <= Hh * 0.42 and abs(vc - cy) <= Hh * 0.28):
+            colon_cols.append(x)
+    if not colon_cols:
+        return False
+    groups = []
+    for x in colon_cols:
+        if groups and x - groups[-1][-1] <= 1:
+            groups[-1].append(x)
+        else:
+            groups.append([x])
+    for grp in groups:
+        if len(grp) < 2:                              # a colon spans >=2 adjacent columns
+            continue
+        cxn = int(sum(grp) / len(grp))
+        if cxn < calib.pitch * 0.6:                   # colon can't be the leading glyph itself
+            continue
+        left = [b for b in boxes if b[1] <= cxn + 2]
+        right = [b for b in boxes if b[0] >= cxn - 1]
+        if len(left) >= 1 and len(right) >= 2:
+            return True
+    return False
+
 
 def _digit_model():
     """Lazy-load the shipped digit classifier once (None if absent -> NCC fallback)."""
@@ -649,7 +725,7 @@ def read_count_seg(tn, yc, calib, accept=0.50, margin_floor=0.04, cx=None):
 
 
 def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
-                return_shift=False, cx_hint=None, return_cx=False):
+                return_shift=False, cx_hint=None, return_cx=False, return_reloading=False):
     """Robust read: pick ONE global block shift by total label agreement, then read each
     weapon row by fixed geometry (calib_y + shift). Each row is verified by its own
     translation-invariant label-token match (so absent/clipped rows are skipped, never
@@ -827,13 +903,37 @@ def read_counts(g, calib, accept=0.45, label_min=0.42, shift_hint=None,
             accepted = label_ok or strong
         if accepted:
             out[wp] = best_rc
-    if return_shift and return_cx:
-        return out, shift, count_x
+    # RELOAD-TIMER scan (single-shot release detection -- see _detect_reload_timer / BOMB_RELOAD_FIRE).
+    # A discrete weapon that fired its last round shows a reload countdown instead of a lower count, so
+    # it never reaches the decrement fire path. Flag any discrete row whose count cell shows a 'D:DD'
+    # timer; the tracker turns the armed->reloading transition into a single fire (with phantom guards).
+    # Anchor at the live count column AND the calibrated column so a drifted cx can't hide the timer.
+    # Returned ONLY when the caller opts in via return_reloading, so the default return shape (and all
+    # existing callers/tests) are unchanged.
+    reloading = set()
+    if BOMB_RELOAD_FIRE and return_reloading:
+        anchors = {count_x, calib.count_x}
+        for wp in calib.rows:
+            if WEAPON_CLASS.get(wp) != "discrete":
+                continue
+            # A real reload REPLACES the count with a timer: if this row still read a numeric count
+            # this frame, the 'timer' is a false colon hit on the weapon's suffix/lock-info text
+            # (e.g. AAM '4/2(L)', RKT '36(F)') -- not a reload. Only consider rows with NO count.
+            if wp in out:
+                continue
+            yc = row_ys.get(wp)
+            if yc is None or yc < calib.row_h or yc > Hh - calib.row_h:
+                continue
+            if any(_detect_reload_timer(tn, yc, calib, a) for a in anchors):
+                reloading.add(wp)
+    rets = [out]
     if return_shift:
-        return out, shift
+        rets.append(shift)
     if return_cx:
-        return out, count_x
-    return out
+        rets.append(count_x)
+    if return_reloading:
+        rets.append(reloading)
+    return tuple(rets) if len(rets) > 1 else out
 
 
 # ============================ runtime wrapper ============================
@@ -937,11 +1037,22 @@ class TemporalTracker:
         self._t = 0                            # frame counter (one tick per update())
         self._last_drop = {}                   # weapon -> frame index of last confirmed fire
         self._all_absent = 0                   # consecutive frames with NO weapon readable
+        # Reload-release state machine (single-shot fire-via-reload-timer, see BOMB_RELOAD_FIRE):
+        self._reload_state = {}                # weapon -> "armed" | "reloading"
+        self._reload_streak = {}              # weapon -> consecutive frames seeing a reload timer
+        self._armed_one = {}                  # weapon -> frames-ago it was last STABLY armed at 1
+        self.RELOAD_CONFIRM = 2               # consecutive timer frames required to fire a release
+        self.ARMED_ONE_MEMORY = 45            # a "stably armed at 1" latch persists this many frames
+                                              # so a release still fires if the count vanished a beat
+                                              # before the reload timer rendered (~2.4 s at ~18 Hz)
 
     def reset(self):
         self.conf.clear()
         self._cand.clear()
         self._last_drop.clear()
+        self._reload_state.clear()
+        self._reload_streak.clear()
+        self._armed_one.clear()
         self._t = 0
         self._all_absent = 0
         for dq in self.raw.values():
@@ -1037,11 +1148,13 @@ class TemporalTracker:
             self._cand[wp] = (level, 1)
         return self._cand[wp][1] >= self.RESYNC_FRAMES
 
-    def update(self, reads):
-        """reads: {wp: (val, conf)} from read_counts. Returns list of fire events
-        [(weapon, effect, kind, delta, old, new)]."""
+    def update(self, reads, reloading=None):
+        """reads: {wp: (val, conf)} from read_counts. reloading: optional set of weapons whose
+        count cell currently shows a reload countdown timer (single-shot release, see
+        BOMB_RELOAD_FIRE). Returns list of fire events [(weapon, effect, kind, delta, old, new)]."""
         self._t += 1
         events = []
+        reloading = reloading or set()
         # GLOBAL absence: a respawn / death / menu / loadout screen makes the WHOLE HUD
         # vanish (every weapon blanks together). One faint weapon (often AAM) blanking while
         # others still read is just cloud on that row -- NOT a reset. Tracking absence
@@ -1055,6 +1168,67 @@ class TemporalTracker:
             self._all_absent += 1
             if self._all_absent == self.ABSENT_RESET:
                 self.conf.clear(); self._cand.clear(); self._last_drop.clear()
+                self._reload_state.clear(); self._reload_streak.clear(); self._armed_one.clear()
+
+        # RELOAD-RELEASE state machine (single-shot weapons: a 1-bomb loadout, or the last round of
+        # a small rocket/missile loadout, fire WITHOUT a visible decrement -- the count is replaced by
+        # a 'm:ss' reload countdown). For each discrete weapon, transition armed -> reloading exactly
+        # once and emit a fire. Phantom guards: (1) only fire if the armed BASELINE was exactly 1 --
+        # i.e. the weapon's LAST/only round. A reload timer cannot appear while several rounds remain
+        # (you can't be reloading with 4 missiles or 36 rockets still loaded), so a 'timer' seen at a
+        # baseline > 1 is a false colon hit on the row's suffix/lock-info during a faint dropout, NOT a
+        # release. This is what keeps multi-round AAM/RKT -- which go absent constantly in cloud -- from
+        # phantom-firing, while still catching a single-bomb drop and a genuine last-round release.
+        # (2) require RELOAD_CONFIRM consecutive timer frames; (3) suppress while the whole HUD is
+        # absent (death/respawn). On rearm (timer gone, count returns) we re-arm silently -- no fire.
+        if BOMB_RELOAD_FIRE:
+            # "HUD present" for the release path = not in a sustained whole-HUD blackout (death /
+            # respawn / menu). We allow the brief absence that NATURALLY accompanies a release (the
+            # firing row blanks as the count is replaced by the dimmed timer) -- gating on == 0 here
+            # would block the very transition we want to catch. Only a blackout >= ABSENT_RESET
+            # (~1 s with EVERY row gone) suppresses it.
+            hud_present = self._all_absent < self.ABSENT_RESET
+            for wp, cls in self.classes.items():
+                if cls != "discrete":
+                    continue
+                # "stably armed at 1" LATCH: set only when the weapon is confirmed at 1 AND the recent
+                # history is CLEANLY 1 -- many reads == 1 and very little contradicting non-1 ordnance
+                # ink. This refresh feeds a countdown latch that persists ARMED_ONE_MEMORY frames, so a
+                # release still fires if the count vanished a beat BEFORE the reload timer rendered (the
+                # f1859 case). Requiring a CLEAN 1-history (not just a few 1s amid garbage) rejects the
+                # match-start weapon-select flicker (f164 case: BMB bouncing 1,83,19,66,0,6,...), which
+                # is not a real armed-at-1 state and must not arm a release.
+                h = [v for v in self.hist[wp] if v is not None]
+                ones = sum(1 for v in h if v == 1)
+                non_one = sum(1 for v in h if v != 1)
+                if self.conf.get(wp) == 1 and ones >= 5 and non_one <= 2:
+                    self._armed_one[wp] = self.ARMED_ONE_MEMORY
+                elif non_one >= 3:
+                    # the count history turned DIRTY (several contradicting non-1 reads) -- this is the
+                    # match-start weapon-select flicker, not a clean armed-at-1 that dropped. Kill the
+                    # latch so a stale clean-opening latch can't carry a phantom into the chaos (f164).
+                    self._armed_one[wp] = 0
+                elif self._armed_one.get(wp, 0) > 0:
+                    self._armed_one[wp] -= 1
+
+                seeing_timer = wp in reloading and hud_present
+                self._reload_streak[wp] = (self._reload_streak.get(wp, 0) + 1) if seeing_timer else 0
+                state = self._reload_state.get(wp, "armed")
+                if state == "armed":
+                    if (self._reload_streak[wp] >= self.RELOAD_CONFIRM
+                            and self._armed_one.get(wp, 0) > 0):
+                        # armed -> reloading: the weapon fired its last/only round. Emit one event.
+                        events.append((wp, WEAPON_EFFECT.get(wp, "missile"), "discrete", 1, 1, 0))
+                        self._reload_state[wp] = "reloading"
+                        self._last_drop[wp] = self._t
+                        self._armed_one[wp] = 0
+                        self.conf.pop(wp, None)        # count is gone (reloading); re-seed on rearm
+                        self._cand.pop(wp, None)
+                elif state == "reloading":
+                    # stay reloading until the timer clears AND a real count returns (handled by the
+                    # normal seed path below re-establishing conf[wp]); then re-arm silently.
+                    if not seeing_timer and self.conf.get(wp) is not None:
+                        self._reload_state[wp] = "armed"
 
         for wp, cls in self.classes.items():
             r = reads.get(wp)
@@ -1604,44 +1778,53 @@ class HudDetector:
         l, t, w, h = self.region
         try:
             g = capture_gray(l, t, w, h)
-            reads, self.shift, self.cx = read_counts(
+            reads, self.shift, self.cx, reloading = read_counts(
                 g, self.calib, shift_hint=self.shift, return_shift=True,
-                cx_hint=self.cx, return_cx=True)
+                cx_hint=self.cx, return_cx=True, return_reloading=True)
         except Exception:
             return [], {}
-        events = self.tracker.update(reads)
+        events = self.tracker.update(reads, reloading=reloading)
         counts = {wp: v for wp, (v, _c) in reads.items()}
         return events, counts
 
-    def poll_capture(self):
-        """Capture once and return (gray_frame, reads_with_conf, (capture_ms, read_ms))
-        WITHOUT mutating detection state. For diagnostics/recording."""
+    def poll_capture(self, with_reloading=False):
+        """Capture once WITHOUT mutating detection state. For diagnostics/recording.
+
+        Returns the legacy 3-tuple (gray_frame, reads_with_conf, (capture_ms, read_ms)) by
+        default; pass with_reloading=True to get the 4-tuple that also carries the reload-timer
+        set (gray_frame, reads_with_conf, reloading_set, (capture_ms, read_ms)). The flag keeps
+        the original return contract intact for existing callers (mirrors read_counts)."""
         if not self.calibrated or np is None:
-            return None, {}, (0.0, 0.0)
+            empty = (None, {}, set(), (0.0, 0.0)) if with_reloading else (None, {}, (0.0, 0.0))
+            return empty
         l, t, w, h = self.region
         try:
             t0 = time.perf_counter()
             g = capture_gray(l, t, w, h)
             t1 = time.perf_counter()
-            reads, self.shift, self.cx = read_counts(
+            reads, self.shift, self.cx, reloading = read_counts(
                 g, self.calib, shift_hint=self.shift, return_shift=True,
-                cx_hint=self.cx, return_cx=True)
+                cx_hint=self.cx, return_cx=True, return_reloading=True)
             t2 = time.perf_counter()
         except Exception:
-            return None, {}, (0.0, 0.0)
-        return g, reads, ((t1 - t0) * 1000.0, (t2 - t1) * 1000.0)
+            return (None, {}, set(), (0.0, 0.0)) if with_reloading else (None, {}, (0.0, 0.0))
+        timings = ((t1 - t0) * 1000.0, (t2 - t1) * 1000.0)
+        if with_reloading:
+            return g, reads, reloading, timings
+        return g, reads, timings
 
     def poll_debug(self):
         """Like poll() but also returns the captured frame and a telemetry snapshot
         (per-weapon read+confidence, confirmed baselines before/after, recent read window,
         timings). Returns (events, counts, gray_frame, info)."""
-        g, reads, timings = self.poll_capture()
+        g, reads, reloading, timings = self.poll_capture(with_reloading=True)
         pre_conf = dict(self.tracker.conf)
-        events = self.tracker.update(reads)
+        events = self.tracker.update(reads, reloading=reloading)
         counts = {wp: v for wp, (v, _c) in reads.items()}
         info = {
             "reads": {wp: {"val": int(v), "conf": round(float(c), 3)}
                       for wp, (v, c) in reads.items()},
+            "reloading": sorted(reloading),
             "confirmed_before": pre_conf,
             "confirmed_after": dict(self.tracker.conf),
             "recent": {wp: [int(x) if x is not None else None for x in dq]
