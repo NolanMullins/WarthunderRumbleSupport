@@ -188,6 +188,48 @@ def test_helper_script_preserves_user_data():
     assert "hud_calib.json" in script
 
 
+def test_helper_script_waitloop_is_bounded():
+    # The pid-wait MUST be bounded so the helper can never spin forever (the "black window that
+    # never closes" bug). It swaps the instant find no longer matches (process gone), and bails to
+    # :giveup after a hard TRIES cap. Uses `ping` for the delay (no console stdin needed), NOT
+    # `timeout` (which errors/needs a console).
+    up = WindowsUpdater(app_dir="C:/app", exe_path="C:/app/WinwingHaptics.exe")
+    script = up._helper_script("C:/staged/WinwingHaptics", "C:/staged")
+    assert "goto waitloop" in script
+    assert "if errorlevel 1 goto swap" in script          # leaves the loop when the pid is gone
+    assert "GEQ" in script and ":giveup" in script         # hard safety cap -> can't spin forever
+    assert "ping " in script                               # console-independent delay
+    assert "timeout " not in script                        # not the fragile console-stdin sleep
+    # CRITICAL: the cap/giveup path must NOT robocopy. If the app is still alive at the cap, copying
+    # over its locked files could leave a partial mixed-version install -- so giveup goes straight to
+    # cleanup, and robocopy lives only under the :swap (process-gone) path.
+    gv, sw = script.index(":giveup"), script.index(":swap")
+    assert gv < sw and "robocopy" not in script[gv:sw]
+
+
+def test_launch_helper_uses_no_window_not_detached(tmp_path, monkeypatch):
+    # REGRESSION: the helper must be launched with CREATE_NO_WINDOW, never DETACHED_PROCESS.
+    # A detached process has no console, so the helper's `tasklist | find` pid-wait blocks forever
+    # and the update never applies (black window that never closes). CREATE_NO_WINDOW gives a valid
+    # hidden console so the wait works, with no visible window.
+    import winwinghaptics.update.installer as inst
+    captured = {}
+
+    class FakePopen:
+        def __init__(self, args, **kw):
+            captured["args"] = args
+            captured["creationflags"] = kw.get("creationflags", 0)
+
+    monkeypatch.setattr(inst.subprocess, "Popen", FakePopen)
+    up = WindowsUpdater(app_dir=str(tmp_path), exe_path=str(tmp_path / "WinwingHaptics.exe"))
+    up._launch_helper(str(tmp_path / "apply_update.bat"))
+    CREATE_NO_WINDOW = 0x08000000
+    DETACHED_PROCESS = 0x00000008
+    flags = captured["creationflags"]
+    assert flags & CREATE_NO_WINDOW, "helper must be launched CREATE_NO_WINDOW"
+    assert not (flags & DETACHED_PROCESS), "helper must NOT be launched DETACHED_PROCESS (hangs tasklist)"
+
+
 def test_build_root_none_when_no_exe(tmp_path):
     # extracted contents without the app exe -> no build root (caller must abort, not guess)
     staging = tmp_path / "staged"

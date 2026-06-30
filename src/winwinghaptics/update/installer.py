@@ -126,19 +126,33 @@ class WindowsUpdater:
             f'set "EXE={exe}"\r\n'
             f'set "LOG={log}"\r\n'
             "echo WinwingHaptics update started %DATE% %TIME% > \"%LOG%\"\r\n"
+            # Wait for THIS app's pid to exit so its files unlock, THEN swap. `if errorlevel 1` is
+            # true when find did NOT match -> the process is gone -> safe to swap (goto swap). A
+            # TRIES cap (~3 min) guarantees we can NEVER spin forever; but on the cap we do NOT
+            # swap (goto giveup) -- the app is still alive, so robocopy over its locked files could
+            # leave a partial, mixed-version install. The app force-exits in ~2 s, so the cap is a
+            # pure safety net. `ping` is the delay (needs no console stdin, unlike `timeout`).
+            # All paths converge on a single :cleanup so the self-delete is always the LAST line.
+            "set /a TRIES=0\r\n"
             ":waitloop\r\n"
             'tasklist /FI "PID eq %PID%" 2>NUL | find "%PID%" >NUL\r\n'
-            "if not errorlevel 1 (\r\n"
-            "  timeout /t 1 /nobreak >NUL\r\n"
-            "  goto waitloop\r\n"
-            ")\r\n"
+            "if errorlevel 1 goto swap\r\n"
+            "set /a TRIES+=1\r\n"
+            "if %TRIES% GEQ 180 goto giveup\r\n"
+            "ping -n 2 127.0.0.1 >NUL\r\n"
+            "goto waitloop\r\n"
+            ":giveup\r\n"
+            'echo app still running after timeout; update not applied >> "%LOG%"\r\n'
+            "goto cleanup\r\n"
+            ":swap\r\n"
             f'robocopy "%SRC%" "%DST%" /E /XF {excl_files} /R:3 /W:2 /NFL /NDL /NJH /NJS /NP '
             '>> "%LOG%" 2>&1\r\n'
-            "if errorlevel 8 (\r\n"
-            '  echo robocopy failed, aborting relaunch >> "%LOG%"\r\n'
-            ") else (\r\n"
-            '  start "" "%EXE%"\r\n'
-            ")\r\n"
+            "if errorlevel 8 goto roborfail\r\n"
+            'start "" "%EXE%"\r\n'
+            "goto cleanup\r\n"
+            ":roborfail\r\n"
+            'echo robocopy failed, aborting relaunch >> "%LOG%"\r\n'
+            ":cleanup\r\n"
             'rmdir /S /Q "%STAGE%" 2>NUL\r\n'
             'del "%~f0"\r\n'
         )
@@ -149,10 +163,19 @@ class WindowsUpdater:
         return helper_path
 
     def _launch_helper(self, helper_path):
-        """Launch the helper detached so it survives this process exiting (it then swaps + relaunches)."""
-        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP so it isn't killed when we exit.
-        flags = 0x00000008 | 0x00000200
-        subprocess.Popen(["cmd", "/c", helper_path], close_fds=True, creationflags=flags,
+        """Launch the helper so it survives this process exiting, WITHOUT a visible window.
+
+        Flags: CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP. We must NOT use DETACHED_PROCESS: a
+        detached process has no console, and the helper's `tasklist | find` pid-wait then BLOCKS
+        forever with no console -- the helper spins, shows a black window that never closes, and the
+        swap never happens (the exact bug users hit). CREATE_NO_WINDOW instead gives the helper a
+        valid but hidden console, so `tasklist`/`find` work and no window is shown; the child is
+        independent so it outlives us to overwrite the app folder and relaunch.
+        """
+        CREATE_NO_WINDOW = 0x08000000
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        subprocess.Popen(["cmd", "/c", helper_path], close_fds=True,
+                         creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
                          cwd=os.path.dirname(helper_path))
 
     # ---- orchestration ----
